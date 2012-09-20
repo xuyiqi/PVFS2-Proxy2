@@ -1,0 +1,161 @@
+PVFS2(Parallel Virtual File System) Proxy
+==============================
+
+Version 0.5.0 by
+  Yiqi Xu, Ming Zhao
+    VISA Lab / School of Computing and Information Sciences
+      Florida International University
+        Dec 2010
+
+
+	Contents
+	===========
+	* Introduction
+	* Requirements
+	* Changes
+	* Installation
+	* Setup
+	* Logging
+	* Support
+
+
+	Introduction
+	==============
+
+	  Parallel Virtual File System 2 (PVFS2) Proxy is an optimization for providing I/O differentiation and Quality of Service(QoS) in parallel environments and seamless integration with unmodified applications.
+	    It leverages existing PVFS2 TCP implementation and uses user-level proxies to track, differentiate and forward file system requests/responses between the native PVFS2 servers and the remote clients.
+
+	    Requirements
+	    ===============
+
+	      PVFS2 Proxy is written in C.  There are no special libraries required by the proxy.  It can be compiled successfully on most mainstream distributions of Linux kernels.
+
+	      Changes
+	      ====================
+	      * Changes from v0.4
+	        Added support for algorithm paramter sections in the config file
+		  Implemented SFQD(READ)
+		    Implemented HYBRID_DSFQ(READ, WRITE), broadcasting based on threshold 
+		      Changed implementation of schedulers, now supporting a much more generic interface to plug-in more schedulers
+		        Added support to choose scheduler when running the proxy
+
+			* Changes from v0.3
+			  Added support for turning scheduler on/off
+			    Added support for turning performance counter on/off
+			      Added support for application differentiation definition
+			        Added support for config file option
+				  Added support for SFQ(D) cost calculation
+				    Added support for dumping stat file when receiving SIG_TERM
+				      Implemented SFQ(D) (WRITE)
+				       
+				       * Changes from v0.2
+				         Added support for tunable logging;
+					   Added support for standard option parsing;
+					     Added support for multi-threaded/multiple client socket operations.
+
+					     * Changes from v0.1.1:
+					       Added support simpler server side GET_CONFIG modification.
+
+					       * Changes from v0.1.0:
+					         Added support polling based implementation: non-blocking recv and send.
+
+						 * Changes from initial draft(0.0):
+						   Added support for tunable cache size.
+						     Implemented blocking styled message forwarding.
+
+						     Installation
+						     ==============
+
+						     * Configure Proxy:
+						       No need to configure for the moment.
+
+						       * Build Proxy:
+						         Use "make" to build the binaries.
+
+							 * Install Proxy:
+							   Currently no installation is needed.
+
+							   * Rebuild Proxy:
+							     Use "make clean" to remove the generated binaries.
+							       Build Proxy again.
+
+							       * Uninstall Proxy:
+							         No need to uninstall for the moment.
+
+								 Setup
+								 ========
+
+								 * Install PVFS2: www.pvfs.org 
+
+								 * Install Proxy:
+								   Deploy the PVFS2 proxy daemons to the desired location on the file system
+								     server.  The examples below assumes the path to the binaries is [./], and the proxied PVFS mount point is in /mnt/pvfs2.  It also assumes that PVFS2 server and client are already successfully configured, installed, and running.
+
+								     * Start PVFS Proxy:
+								       1. On the file system client:
+								            When running only using the pvfs2-command tools, change the configuration of the PVFS2 client by editing /etc/pvfs2tab(or the tab file you choose for the client/tool to see) and change its port number to the one your proxy is running on.
+
+									         For example change the following (original default PVFS2 serve port is 3334):
+										         tcp://pvfss321:3334/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0
+											 	 to:
+												         tcp://pvfss321:3335/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0
+
+													      When running using kernel module and mount approach, this step can be skipped, and no more change on the client is necessary.  Just set the mount point to port 3335 and you are all set.
+													           
+														        Note: If you plan to profile and evaluate proxy performance compared with native performance, you can mount your PVFS2 file system onto different locations on the client when the PVFS client is using kernel module.  For more details on how to compile and run in kernel module, please refer to http://www.pvfs.org/cvs/pvfs-2-8-branch-docs/doc//pvfs2-quickstart/pvfs2-quickstart.php#SECTION00060000000000000000.
+
+															     In an environment where domain name service is not available and you want to use machine name in the TCP string to designate the servers, you may need to edit the /etc/hosts file on each server to redirect a specific server name to its IP address:
+
+															     	 127.0.0.1		localhost
+																      127.0.1.1		yiqi-desktop
+																           131.94.130.215	pvfss321
+																	        131.94.130.216	pvfss322
+																		     131.94.130.217	pvfss323
+
+																		       2. On the file system server (including all I/O nodes and meta-data servers), make the binaries of proxy and copy it to the location you need them to be.  Start the server executables.  Make sure the servers are running correctly.
+
+																		            Note: All the servers in the server configuration file will be disguised as a different location (change of ports to redirect to the proxy) when the proxy is working and the contact from a client is made through the proxy.  Thus, all the running servers should have a same copy of proxy running with the same parameters (port).  It can happen that some clients will mount their remote servers from the original ports, but that still requires the proxy to exist on every node in case another client needs to contact this server via the proxy on another server.
+
+																			      3. Start the proxy on the file system server by
+																			           "./proxy2 [--port=port_number] [--buffer=cache_size] [--log=default|all|none|debug|cache] [--delay=poll_timeout] [--scheduler=SFQD|DSFQ|none] [--config=weights.ini] [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]".
+																				        The cache_size(in bytes) has a limit ¨C it has to be larger than the size of the configuration file (/etc/pvfs2-fs.conf by default on the server nodes).  50-100KB seems to be a reasonably optimal size according to our program tuning and testing.  The cache sits on each socket bound to a client or the server response (initiated by the client and the server).  Thus, setting an appropriate amount of cache keeps the system healthy.
+																					     The counter flag indicates whether or not to start the periodical counter for every few seconds' statistics.
+																					          The stat flag identifies the name of the log file for final statistic output when it receives SIG_TERM.
+																						       The cost_method flag indicates whether or not to use pure payload size as the calculation for cost (default is yes).
+																						            The scheduler can be turned off using the --scheduler=none flag.  Default scheduler is SFQD.
+																							         The config flag can be used to use a different file name/location for weights definition.
+																								      The proxy config means the pvfs2 server configuration file the server is using and the proxy needs to figure out other server/proxy locations
+																								           
+																									        Use "./proxy2 --help" to see the available switches and options.
+																										     For example, the following command starts the proxy with port 3335 and cache size of 70K bytes:
+
+																										          ./proxy2 --port=3335 --buffer=716800
+
+																											       Make sure the initial output of the proxy confirms your input parameters are chosen and running correctly.
+
+																											         4. Start executing test programs and verify the sanity and performance by
+
+																												      ¡°pvfs2-ping -m /mnt/pvfs2¡±
+																												           Execute wireshark and listen on PVFS specific messages to make sure all the traffic goes through the designated port (3335 in the example) rather than the original native server port (3334 by default).
+																													        Use IOR2 in MPIIO  (compiled with PVFS2 support) to test communication directly between clients and proxyies/servers.  Current implementation only includes WRITE operation for PVFS scheduler.  It is only limited to IOR2 tests with blocksize of multiples of transfersize*number of stripped servers.
+																														     To test using PVFS2 protocol support in MPIIO: 
+																														          "/home/users/software/mpich2-1.2.1p1/bin/mpiexec -machinefile tests/machinefile.1 -n 2 /home/users/software/IOR/src/C/IOR -a MPIIO -o pvfs2:/home/users/yiqi/mnt/t4 -wk -t 1m -b 20m"
+																															       To manually setup asymmtric environment on the server:
+																															                 
+																																	      
+																																	      * Destroy PVFS2 proxy:
+																																	        Use "umount" to unmount the PVFS2 partition (if you started it by using kernle module) and then kill the proxy daemons.
+
+																																		Logging
+																																		==========
+
+																																		     For performance issues, currently the logging is by default written to /var/tmp/proxy2.log.
+
+																																		     Support
+																																		     ==========
+
+																																		       Web site: http://groups.google.com/group/hecura-vpfs
+																																		         SVN: https://visa.cis.fiu.edu/svn/hecura/pvfs-proxy 
+																																			   Email: zhaom@cis.fiu.edu, yxu006@cis.fiu.edu 
+
+
