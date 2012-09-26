@@ -19,6 +19,7 @@
 #include "logging.h"
 #include <pthread.h>
 #include "config.h"
+#include "scheduler_main.h"
 extern long long small_io_size, large_io_size;
 int performance_interval;
 pthread_mutex_t counter_mutex;
@@ -75,6 +76,8 @@ struct performance_sta counter_output(int index, float seconds)
 void* work_report(void * arg)
 {
 	int i;
+	if (depthtrack==NULL)
+		depthtrack=stderr;
 	while(1)
 
 	{

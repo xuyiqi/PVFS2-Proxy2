@@ -4,7 +4,8 @@
  *  Created on: Nov 15, 2011
  *      Author: yiqi
  */
-
+#include <limits.h>
+#include <math.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -30,7 +31,6 @@
 #include "logging.h"
 #include "proxy2.h"
 #include <unistd.h>
-#include <math.h>
 #include "scheduler_2LSFQD.h"
 #include "heap.h"
 #include "iniparser.h"
@@ -48,7 +48,7 @@ extern char* log_prefix;
 #define TWOL_EDF_TIME 1000
 #define TWOL_EDF_INFINITE 100
 #define TWOL_REPLENISH_AMOUNT 100
-
+int twolsfqd_ttl_rate=0;
 int twolsfqd_default_weight=1;
 int twolsfqd_depth=1;
 int twolsfqd_current_depth=30;
@@ -59,7 +59,13 @@ int timewindow_id=0;
 int twolsfqd_missed_storage=0;
 int *twolsfqd_missed_storages=0;
 int twolsfqd_missed_time = 0;
+
+int *period_cumulative_request_size;
+int *period_cumulative_request_count;
+double *last_app_rate;
 pthread_mutex_t twolsfqd_sfqd_queue_mutex;
+
+int default_nr=8;
 /*
  * aging statistics
  * expected_time - predicted response time of an I/O in storage utility...used to calculate the time for staying in the queue
@@ -80,6 +86,9 @@ pthread_mutex_t twolsfqd_sfqd_queue_mutex;
  * next_timewindow_queue_threshold
  *
  * */
+int queue_index=0;
+
+int* sarc_credits;
 
 int timewindow_arrival;
 int timewindow_arrival_deadline;
@@ -94,6 +103,7 @@ int * class_dispatched;
 
 int* timewindow_95_percentile; //for each class
 int* last_timewindow_95_percentile; //for each class
+int* current_outstanding;
 
 int timewindow_max_outstanding = 0;
 int timewindow_queue_threshold = TWOL_EDF_INFINITE;
@@ -125,9 +135,9 @@ PINT_llist_p* iedf_llist_resp;
 int iedf_item_id=0;
 int expected_time;
 
+PINT_llist_p* sarc_credit_list;
 
-
-struct heap * twolsfqd_heap_queue;
+//struct heap * twolsfqd_heap_queue;
 int twolsfqd_item_id=0;
 
 int twolsfqd_timewindow = TWOL_EDF_TIME;//in ms for collecting data
@@ -175,12 +185,23 @@ int twolsfqd_init()
 	twolsfqd_timewindow_timeval.tv_sec  = twolsfqd_timewindow/1000;
 	twolsfqd_timewindow_timeval.tv_usec = (twolsfqd_timewindow - twolsfqd_timewindow_timeval.tv_sec*1000)*1000;
 	gettimeofday(&last_replenish_time, 0);
-	twolsfqd_heap_queue=(struct heap*)malloc(sizeof(struct heap));
+	//twolsfqd_heap_queue=(struct heap*)malloc(sizeof(struct heap));
 
-	heap_init(twolsfqd_heap_queue);
+	//heap_init(twolsfqd_heap_queue);
 	iedf_llist_resp=(PINT_llist_p*)malloc(sizeof(PINT_llist_p));
 
+	current_outstanding = (int*)malloc(num_apps*sizeof(int));
+
+
+	period_cumulative_request_count=(int*)malloc(num_apps*sizeof(int));
+	period_cumulative_request_size=(int*)malloc(num_apps*sizeof(int));
+	last_app_rate=(double*)malloc(num_apps*sizeof(int));
+
 	iedf_llist_queue=PINT_llist_new();
+
+	sarc_credit_list=(PINT_llist_p*)malloc(num_apps*sizeof(PINT_llist_p));
+	sarc_credits=(int*)malloc(num_apps*sizeof(int));
+
 	timewindow_completed = (int*) malloc(num_apps*sizeof(int));
 
 	timewindow_dispatched = (int*) malloc(num_apps*sizeof(int));
@@ -205,7 +226,13 @@ int twolsfqd_init()
 	timewindow_arrival=0;
 	for (i=0;i<num_apps;i++)
 	{
-
+		sarc_credits[i]=app_stats[i].app_rate*1048576;
+		//assumming that rate is in megabytes
+		sarc_credit_list[i]=PINT_llist_new();
+		last_app_rate[i]=0.0f;
+		period_cumulative_request_count[i]=0;
+		period_cumulative_request_size[i]=0;
+		current_outstanding[i] = 0;
 		iedf_llist_resp[i]=PINT_llist_new();
 		class_dispatched[i]=0;
 		timewindow_arrival_deadlines[i]=0;
@@ -218,7 +245,7 @@ int twolsfqd_init()
 		timewindow_completed[i]=0;
 		timewindow_dispatched[i]=0;
 		twolsfqd_missed_storages[i]=0;
-		next_timewindow_queue_thresholds[i]=0;
+		next_timewindow_queue_thresholds[i]=1;
 	}
 
 	char* deptht=(char*)malloc(sizeof(char)*40);
@@ -375,6 +402,8 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	io_type= pi->io_type;
 	req_size=pi->req_size;
 
+
+
 	char* ip = s_pool.socket_state_list[d_socket_index].ip;
 
 	int port= s_pool.socket_state_list[d_socket_index].port;
@@ -382,6 +411,9 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	int socket_tag = tag;
 
 	int app_index= s_pool.socket_state_list[r_socket_index].app_index;
+
+
+
 	int weight = s_pool.socket_state_list[r_socket_index].weight;
 
 	int start_tag=MAX(twolsfqd_virtual_time, twolsfqd_last_finish_tags[app_index]);//work-conserving
@@ -421,6 +453,7 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->aggregate_size=pi->aggregate_size;
 	item->strip_size=pi->strip_size;
 	generic_item->item_id=twolsfqd_item_id++;
+	fprintf(stderr,"iiiiiiiiiiiiiii item id is %i\n", generic_item->item_id);
 
 	char bptr[20];
     struct timeval tv;
@@ -431,6 +464,9 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->data_ip=ip;
 	item->task_size=length;
 
+	fprintf(depthtrack, "%s %s offset %lli size %i %s:%i, %i\n", log_prefix, bptr, pi->req_offset, length,
+			s_pool.socket_state_list[r_socket_index].ip,s_pool.socket_state_list[r_socket_index].port, io_type);
+
 	item->data_socket=d_socket;
 	item->socket_tag=socket_tag;
 	item->app_index=app_index;
@@ -440,48 +476,66 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->io_type=io_type;
 	item->buffer=request;
 	item->buffer_size=req_size;
+	item->dispatched=-1;
+
 
 	generic_item->socket_data=si;
 
+	period_cumulative_request_size[app_index]+=item->aggregate_size;
+	period_cumulative_request_count[app_index]+=1;
+	app_stats[app_index].app_nr=item->server_count;
 
+
+	fprintf (stderr,"new request on socket %i!!!!!!!!!!!!!!!!!!!!1\n", r_socket_index);
 	pthread_mutex_lock(&twolsfqd_sfqd_queue_mutex);
 
 	//Dprintf(D_CACHE, "[INITIALIZE]ip:%s port:%i tag:%i\n", item->data_ip, item->data_port, item->socket_tag);
-	twolsfqd_add_item(twolsfqd_heap_queue,generic_item);
 
+
+	//twolsfqd_add_item(twolsfqd_heap_queue,generic_item);
+	//re-write this function to add item to its own list, or, expand it here
+	PINT_llist_add_to_tail(sarc_credit_list[app_index], generic_item);
+
+
+	s_pool.socket_state_list[r_socket_index].current_item= generic_item;
 
 	int dispatched=0;
+
+
+
 	//current_depth now means current_credit
-	if (twolsfqd_current_depth>0)
+	if (sarc_credits[app_index]>=length)
 	{
 		//dispatched=1;
-
-		if (twolsfqd_dequeue_all(generic_item)==0)
+		fprintf(stderr,"enqueue\n");
+		if (twolsfqd_dequeue_all(generic_item)<=0)
 		{
 			//fprintf(stderr,"2LSFQD 1item delayed on socket %i\n",item->request_socket);
 			s_pool.socket_state_list[r_socket_index].locked=1;
 			s_pool.socket_state_list[r_socket_index].has_block_item=1;
-
 		}
 
 	}
 	else
 	{
+		fprintf(stderr,"app %i has not enough credits left ....", app_index);
 		//check spareness
 		twolsfqd_update_spareness();
-		if (twolsfqd_current_depth>0)
+		if (sarc_credits[app_index]>=length)
 		{
 			//dispatched=1;
-			if (twolsfqd_dequeue_all(generic_item)==0)
+			fprintf(stderr,"app %i found after update\n", app_index);
+			if (twolsfqd_dequeue_all(generic_item)<=0)
 			{
 				//fprintf(stderr,"2LSFQD 2item delayed on socket %i\n",item->request_socket);
 				s_pool.socket_state_list[r_socket_index].locked=1;
 				s_pool.socket_state_list[r_socket_index].has_block_item=1;
 
-			};
+			}
 		}
 		else
 		{
+			fprintf(stderr," still not enough credit left\n");
 			//fprintf(stderr,"2LSFQD 3item delayed on socket %i\n",item->request_socket);
 			s_pool.socket_state_list[r_socket_index].locked=1;
 			s_pool.socket_state_list[r_socket_index].has_block_item=1;
@@ -520,15 +574,14 @@ int twolsfqd_dequeue_all(struct generic_queue_item * g_item)
 	//fprintf(stderr, "Dequeueing all because of credit replenish\n");
 	int dispatched = 0;
 	int r_dispatched = 0;
-	while (twolsfqd_current_depth>0)
-	{
+	int i;
 
-		struct generic_queue_item* citem = twolsfqd_dequeue();
-		if (citem==NULL)
-		{
-			break;
-		}
+	struct generic_queue_item* citem = twolsfqd_dequeue();
+	while (citem!=NULL)
+	{
+		citem=twolsfqd_dequeue();
 	}
+
 	if (g_item!=NULL)
 	{
 		struct twolsfqd_queue_item* q_item = (struct twolsfqd_queue_item*) (g_item->embedded_queue_item);
@@ -556,30 +609,52 @@ struct generic_queue_item* twolsfqd_dequeue()
  *
  * */
 
-	struct generic_queue_item * next;
+	struct generic_queue_item * next, *temp;
 	//free up current item
 	int dispatched = 0;
-	next_retry:
-	if (!heap_empty(twolsfqd_heap_queue))
+
+	int k=0;
+
+	while (k<num_apps)//try at most all apps once
 	{
+		fprintf(stderr,"dispatching %i app xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", queue_index);
+		temp = (struct generic_queue_item *)PINT_llist_head(sarc_credit_list[queue_index]);
+		if (temp!=NULL)
+		{
 
-		twolsfqd_current_depth--;
-		struct heap_node * hn  = heap_take(twolsfqd_packet_cmp, twolsfqd_heap_queue);
-		next  = heap_node_value(hn);
-		struct twolsfqd_queue_item *next_item = (struct twolsfqd_queue_item *)(next->embedded_queue_item);
+			struct twolsfqd_queue_item *next_item = (struct twolsfqd_queue_item *)(temp->embedded_queue_item);
+			if (sarc_credits[queue_index]>=next_item->task_size)
+			{
 
-		next_item->dispatched=0;
-		twolsfqd_edf_enqueue(next);
+				next = (struct generic_queue_item *)
+						PINT_llist_rem(sarc_credit_list[queue_index], (void*)temp->item_id,  list_req_comp);
+				//we are just trying to grab the same next_item
+				fprintf(stderr,"item id is %i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", temp->item_id);
+				assert(next!=NULL);
 
-		timewindow_dispatched[next_item->app_index]++;
-		timewindow_ttl_dispatched++;
-		struct timeval now;
-		gettimeofday(&now, 0);
-		next_item->queuedtime=now;
-		return NULL;
+				next_item = (struct twolsfqd_queue_item *)(next->embedded_queue_item);
+				sarc_credits[queue_index]-=next_item->task_size;
+				dispatched=1;
+				next_item->dispatched=0;
+				twolsfqd_edf_enqueue(next);
 
-		//fprintf(stderr,"############### sarc dispatched ##############\n");
+				timewindow_dispatched[next_item->app_index]++;
+				timewindow_ttl_dispatched++;
+				current_outstanding[next_item->app_index]++;
+				struct timeval now;
+				gettimeofday(&now, 0);
+				next_item->queuedtime=now;
+				queue_index= (queue_index+1) % num_apps;
+				return next;
+			}
+		}
+		queue_index= (queue_index+1) % num_apps;
+		k++;
+	}
 
+	if (dispatched==1)
+	{
+		assert(dispatched!=1);
 	}
 	else
 	{
@@ -598,7 +673,6 @@ int twolsfqd_edf_enqueue(struct generic_queue_item* item)
 	timewindow_arrival++;
 
 
-
 	PINT_llist_add_to_tail(iedf_llist_queue, item);
 	edf_queue_length++;
 
@@ -607,6 +681,7 @@ int twolsfqd_edf_enqueue(struct generic_queue_item* item)
 	struct twolsfqd_queue_item *next_item = (struct twolsfqd_queue_item *)(item->embedded_queue_item);
 
 	timeradd(&now, &(iedf_deadlines_timeval[0]), &(next_item->deadline));
+	next_item->timewindow = timewindow_id;
 	if (timewindow_current_queue_length!=0)
 	{
 		PINT_llist_sort(iedf_llist_queue,list_edf_sort_comp);
@@ -622,6 +697,7 @@ int twolsfqd_edf_enqueue(struct generic_queue_item* item)
 		fprintf(depthtrack,"deadline in current window\n");
 		timewindow_arrival_deadline++;
 		timewindow_arrival_deadlines[next_item->app_index]++;
+		next_item->deadline_in_current_timewindow=1;
 	}
 	next_item->queuedtime=now;
 
@@ -661,6 +737,8 @@ int twolsfqd_edf_dequeue_all(int enqueued_socket)
 
 		item = (struct twolsfqd_queue_item*)(((struct generic_queue_item *)queue->item)->embedded_queue_item);
 
+		fprintf(stderr,"deadline:%i.%i, now: %i.%i\n", item->deadline.tv_sec, item->deadline.tv_usec,
+		now.tv_sec, now.tv_usec	);
 		if ( timercmp(&(item->deadline), &now, <=))
 		{
 			fprintf(depthtrack,"missing dealine %i.%06i <= now %i.%06i\n",
@@ -703,6 +781,7 @@ int twolsfqd_edf_dequeue_all(int enqueued_socket)
 	{
 		fprintf(depthtrack,"*******************edf dispatched %i requests******************\n", item_count);
 		twolsfqd_update_spareness();
+		fprintf(stderr,"edf update\n");
 		twolsfqd_dequeue_all(NULL);
 
 	}
@@ -720,6 +799,7 @@ int twolsfqd_edf_dequeue_all(int enqueued_socket)
 
 }
 
+int all_requests=1;
 
 struct generic_queue_item* twolsfqd_edf_dequeue()
 {
@@ -731,7 +811,8 @@ struct generic_queue_item* twolsfqd_edf_dequeue()
 
 	if (item!=NULL)
 	{
-		next_item = (struct generic_queue_item *)PINT_llist_rem(iedf_llist_queue, (void*)item->item_id,  list_req_comp);
+		next_item = (struct generic_queue_item *)
+				PINT_llist_rem(iedf_llist_queue, (void*)item->item_id,  list_req_comp);
 	}
 	else
 	{
@@ -740,10 +821,21 @@ struct generic_queue_item* twolsfqd_edf_dequeue()
 
 	if (next_item!=NULL)
 	{
+		fprintf(stderr,"$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ dispatching %i\n", item->item_id);
 		struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item *)(next_item->embedded_queue_item);
 		struct timeval dispatch_time, diff;
 		gettimeofday(&dispatch_time, 0);
 		twolsfqd_item->dispatchtime = dispatch_time;
+		twolsfqd_item->dispatched=1;
+		if (twolsfqd_item->timewindow==timewindow_id)
+		{
+			fprintf(depthtrack, "arrival decreased because edf is dispatched to outstanding\n");
+			timewindow_arrival--;
+			if (twolsfqd_item->deadline_in_current_timewindow==1)
+			{
+				timewindow_arrival_deadline--;
+			}
+		}
 
 		get_time_diff(&twolsfqd_item->queuedtime, &diff);
 		int app_index = twolsfqd_item->app_index;
@@ -764,6 +856,7 @@ struct generic_queue_item* twolsfqd_edf_dequeue()
 				//fprintf(stderr,"setting socket %i = %i to locked = 0 /req sock: %i\n",s_pool.socket_state_list[i].socket, s_pool.poll_list[i].fd, twolsfqd_item->request_socket);
 				next_item->socket_data->unlock_index=i;
 				s_pool.socket_state_list[i].locked=0;
+
 				s_pool.socket_state_list[i].current_item=next_item;
 				break;
 			}
@@ -771,8 +864,12 @@ struct generic_queue_item* twolsfqd_edf_dequeue()
 		if (i>=s_pool.pool_size)
 		{
 			fprintf(stderr,"[FFFFFFFFFFFFFFFFFFFFFFFFFFFFFATAL] socket %i not found anymore\n", twolsfqd_item->request_socket);
-			heap_take(twolsfqd_packet_cmp, twolsfqd_heap_queue);
+			//heap_take(twolsfqd_packet_cmp, twolsfqd_heap_queue);
 
+		}
+		else
+		{
+			//fprintf(stderr,"[FFFFFFFFFFFFFFFFFFFFFFFFFFFFFATAL] socket %i found\n", twolsfqd_item->request_socket);
 		}
 		app_stats[app_index].req_go+=1;
 		app_stats[app_index].dispatched_requests+=1;
@@ -792,49 +889,144 @@ int timewindow_nintyfive;
 void nintyfive_percentile()//calculate the history in the current window
 {
 	int i;
-	cumulativetime=0;
+
 	int item_time=0;
 
 	int j;
 	for (j=0; j<num_apps; j++)
 	{
-
-
-		PINT_llist_p resp_list = PINT_llist_sort(iedf_llist_resp[j],list_resp_sort_comp);
-
-		if (resp_list==NULL)
+		cumulativetime=0;
+		if (timewindow_completed[j]!=0)
 		{
+			PINT_llist_p resp_list = PINT_llist_sort(iedf_llist_resp[j],list_resp_sort_comp);
 
-			//timewindow_95_percentile[j]=0;
-			//fprintf(stderr,"no resp records for class %i\n", j+1);
-			continue;
-		}
-		resp_list= resp_list->next;
-
-		if (resp_list==NULL)
-		{
-			//timewindow_95_percentile[j]=0;
-			//fprintf(stderr,"no resp records for class %i\n", j+1);
-			continue;
-		}
-		for (i=0; i<timewindow_completed[j]; i++)
-		{
 			if (resp_list==NULL)
 			{
-				//fprintf(stderr,"Went over the whole list for class %i\n", j+1);
-				break;
-			}
-			item_time = ((struct resp_time *)resp_list->item)->resp_time;
-			cumulativetime += item_time;
-			last_timewindow_95_percentile[j] = timewindow_95_percentile[j];
-			timewindow_95_percentile[j]= item_time;
-			if (cumulativetime>=timewindow_nintyfive)
-			{
-				//fprintf(stderr,"Found nintyfifth percentile before going over the whole list of class %i: %i\n", j+1, item_time);
-				break;
+
+				//timewindow_95_percentile[j]=0;
+				//fprintf(stderr,"no resp records for class %i\n", j+1);
+				continue;
 			}
 			resp_list= resp_list->next;
 
+			if (resp_list==NULL)
+			{
+				//timewindow_95_percentile[j]=0;
+				//fprintf(stderr,"no resp records for class %i\n", j+1);
+				continue;
+			}
+			for (i=0; i<timewindow_completed[j]; i++)
+			{
+				if (resp_list==NULL)
+				{
+					//fprintf(stderr,"Went over the whole list for class %i\n", j+1);
+					break;
+				}
+				item_time = ((struct resp_time *)resp_list->item)->resp_time;
+				cumulativetime += item_time;
+				//fprintf(stderr,"%i/%i ", item_time, cumulativetime);
+				last_timewindow_95_percentile[j] = timewindow_95_percentile[j];
+				timewindow_95_percentile[j]= item_time;
+				if (cumulativetime>=timewindow_nintyfive)
+				{
+					fprintf(stderr,"exceeded %i\n",timewindow_nintyfive);
+					//fprintf(stderr,"Found nintyfifth percentile before going over the whole list of class %i: %i\n", j+1, item_time);
+					break;
+				}
+				resp_list= resp_list->next;
+
+			}
+			fprintf(stderr,"value calculated from response is %i\n",item_time );
+		}
+		else if (current_outstanding[j]!=0)
+		{	int k=0;
+
+			int found=0;
+			PINT_llist_p jtime =PINT_llist_new();
+			for (k=0;k<s_pool.pool_size;k++)
+			{
+					if (s_pool.socket_state_list[k].current_item!=NULL)
+					{
+						struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item * )(s_pool.socket_state_list[k].current_item->embedded_queue_item);
+
+						if ( twolsfqd_item->dispatched==1 && twolsfqd_item->app_index==j)
+						{
+							//accumulate time values here
+							//form a list
+							struct resp_time * new_resp = (struct resp_time *) malloc(sizeof(struct resp_time));
+							struct timeval diff;
+							get_time_diff(&(twolsfqd_item->dispatchtime), &diff);
+							new_resp->resp_time=diff.tv_sec*1000+diff.tv_usec/1000;
+							PINT_llist_add_to_tail(jtime, (void*) (new_resp));
+							PINT_llist_sort(jtime,list_resp_sort_comp);
+							found++;
+							if (found>=current_outstanding[j])
+								break;
+						}
+					}
+			}
+
+			jtime= jtime->next;
+
+			if (jtime==NULL)
+			{
+				//timewindow_95_percentile[j]=0;
+				//fprintf(stderr,"no resp records for class %i\n", j+1);
+				continue;
+			}
+			for (i=0; i<current_outstanding[j]; i++)
+			{
+				if (jtime==NULL)
+				{
+					//fprintf(stderr,"Went over the whole list for class %i\n", j+1);
+					break;
+				}
+				item_time = ((struct resp_time *)jtime->item)->resp_time;
+				cumulativetime += item_time;
+				//fprintf(stderr,"%i/%i ", item_time, cumulativetime);
+				last_timewindow_95_percentile[j] = timewindow_95_percentile[j];
+				timewindow_95_percentile[j]= item_time;
+				if (cumulativetime>=timewindow_nintyfive)
+				{
+					//fprintf(stderr,"Found nintyfifth percentile before going over the whole list of class %i: %i\n", j+1, item_time);
+					fprintf(stderr,"exceeded %i\n",timewindow_nintyfive);
+					break;
+				}
+				jtime = jtime->next;
+			}
+			fprintf(stderr,"value calculated from outstanding is %i\n",item_time );
+		}
+		else
+		{
+			fprintf(stderr,"nothing to calculate for app %i\n",j);
+			timewindow_95_percentile[j]=0;
+		}
+		///now edf waiting time also needs the accumulative values from the queued time for long-stacked items
+		///if they cross multiple timewindows
+		int l;
+		for (l=0;l<s_pool.pool_size;l++)
+		{
+			if (s_pool.socket_state_list[l].current_item!=NULL)
+			{
+				struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item * )(s_pool.socket_state_list[l].current_item->embedded_queue_item);
+
+				if (twolsfqd_item->dispatched==0 && twolsfqd_item->app_index==j)
+				{
+					struct timeval diff;
+					get_time_diff(&twolsfqd_item->queuedtime, &diff);
+					int app_index = twolsfqd_item->app_index;
+					fprintf(stderr,"queued item counts towards edf waiting: %i.%06i\n", (int)diff.tv_sec, (int)diff.tv_usec);
+					timeradd(&diff, timewindow_edf_waiting+app_index, timewindow_edf_waiting+app_index);
+					/**
+					 *
+					 *
+					 * check if they're in the edf queue yet!
+					 *
+					 *
+					 * */
+				}
+			}
+			//same thing did as when the request was dispatched.
 		}
 	}
 
@@ -845,22 +1037,46 @@ void nintyfive_percentile()//calculate the history in the current window
 int twolsfqd_edf_complete(void * arg)
 {
 	pthread_mutex_lock(&twolsfqd_sfqd_queue_mutex);
+
 	struct complete_message * complete = (struct complete_message *)arg;
-
-	struct generic_queue_item * current_item = (complete->current_item);
-
-	struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item * )(current_item->embedded_queue_item);
-	twolsfqd_item->got_size+=(complete->complete_size);
+	struct generic_queue_item * current_item;
+	struct twolsfqd_queue_item * twolsfqd_item;
 
 
-	//fprintf(stderr,"^^^^^^^^^^^^^^^^^Got %i/%i ^^^^^^^^^^^^^^^^^^\n", twolsfqd_item->got_size, twolsfqd_item->task_size);
+
+	current_item = (complete->current_item);
+	twolsfqd_item = (struct twolsfqd_queue_item * )(current_item->embedded_queue_item);
+	fprintf(stderr,"got from item %i on socket %i\n", current_item->item_id, complete->complete_size);
+	if (complete->complete_size>0)
+	{
+
+		twolsfqd_item->got_size+=(complete->complete_size);
+	}
+	else
+	{
+		twolsfqd_item->got_size=twolsfqd_item->task_size;
+	}
+
+
+	//fprintf(stderr,"sock %i ^^^^^^^^^^^^^^^^^Got %i/%i ^^^^^^^^^^^^^^^^^^\n",
+		//	s_pool.socket_state_list[twolsfqd_item->request_socket_index].socket,
+			//twolsfqd_item->got_size, twolsfqd_item->task_size);
 	if (twolsfqd_item->task_size==twolsfqd_item->got_size)
 	{
+		if (twolsfqd_item->timewindow==timewindow_id)
+		{
+			timewindow_arrival++;
+			if (twolsfqd_item->deadline_in_current_timewindow==1)
+			{
+				timewindow_arrival_deadline++;
+			}
+		}
 		int app_index = twolsfqd_item->app_index;
 		app_stats[app_index].completed_requests+=1;
 		//fprintf(stderr,"**************************************************\n");
 		timewindow_ttl_completed++;
 		timewindow_completed[app_index]++;
+		current_outstanding[app_index]--;
 		if (twolsfqd_item->missed==1)
 		{
 			twolsfqd_missed_storages[twolsfqd_item->app_index]--;
@@ -871,14 +1087,18 @@ int twolsfqd_edf_complete(void * arg)
 		}
 		//add new timewindow_resp_time the list;
 		struct resp_time * new_resp = (struct resp_time *) malloc(sizeof(struct resp_time));
-		struct timeval diff;
+		struct timeval diff,n;
 		get_time_diff(&(twolsfqd_item->dispatchtime), &diff);
-
+		gettimeofday(&n,0);
 		new_resp->resp_time=diff.tv_sec*1000+diff.tv_usec/1000;//in ms
 		timewindow_total_resp+=new_resp->resp_time;
 
-		fprintf(depthtrack, "response time of class %i: %i ms on ip %s\n",
-				twolsfqd_item->app_index, new_resp->resp_time, s_pool.socket_state_list[twolsfqd_item->request_socket_index].ip);
+		fprintf(depthtrack, "%i response time of class %i: %i ms on ip %s\n",
+				n.tv_sec,twolsfqd_item->app_index, new_resp->resp_time, s_pool.socket_state_list[twolsfqd_item->request_socket_index].ip);
+		//fprintf(stderr, "response time of class %i: %i ms on ip %s\n",
+				//twolsfqd_item->app_index, new_resp->resp_time, s_pool.socket_state_list[twolsfqd_item->request_socket_index].ip);
+
+
 		average_resp_time[twolsfqd_item->app_index]+=(diff.tv_sec*1000+diff.tv_usec/1000);
 
 		PINT_llist_add_to_tail(iedf_llist_resp[twolsfqd_item->app_index], (void*)new_resp);
@@ -899,13 +1119,15 @@ int twolsfqd_edf_complete(void * arg)
 		fprintf(stderr,"error from sock %i, item %i\n",twolsfqd_item->request_socket_index, twolsfqd_item->stream_id);
 		fprintf(stderr, "error...got_size %i> task_size %i (completed %i), op is %i, error_count is %i\n",
 				twolsfqd_item->got_size,twolsfqd_item->task_size, complete->complete_size, twolsfqd_item->io_type,twolsfqd_item->over_count);
+		//getchar();
 		pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
 		return -1;
 		//return sfqd_item->got_size;
 
 	}
 	else
-	{pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
+	{
+		pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
 		//fprintf(stderr, "inprogress...got_size %i< task_size %i (completed %i), op is %i, error_count is %i\n",sfqd_item->got_size,sfqd_item->task_size, complete->complete_size, sfqd_item->io_type,sfqd_item->over_count);
 		return 0;
 	}
@@ -931,16 +1153,23 @@ int twolsfqd_load_data_from_config (dictionary * dict)
 
 	for (i=0;i<num_apps;i++)
 	{
+
 		char l[6];
 		sprintf(l,"app%i",i+1);
 		char* l2 = (char*)malloc(sizeof(char)*(strlen(l)+11));
 		sprintf(l2, "latencies:%s", l);
+		char* l3 = (char*)malloc(sizeof(char)*(strlen(l)+7));
+		sprintf (l3, "rates:%s", l);
+		app_stats[i].app_rate = iniparser_getint(dict, l3 ,100);
 		iedf_deadlines[i]=iniparser_getint(dict, l2 ,2000);
 		iedf_deadlines_timeval[i].tv_sec=iedf_deadlines[i]/1000;
 		iedf_deadlines_timeval[i].tv_usec=(iedf_deadlines[i]-iedf_deadlines_timeval[i].tv_sec*1000)*1000;
 		fprintf(stderr,"TWOLSFQD using latency:%i.%06i\n",
 				(int)iedf_deadlines_timeval[i].tv_sec,
 				(int)iedf_deadlines_timeval[i].tv_usec);
+		fprintf(stderr,"TWOLSFQD using rate:%i\n", app_stats[i].app_rate);
+		twolsfqd_ttl_rate+=app_stats[i].app_rate;
+		app_stats[i].app_nr=default_nr;
 	}
 	return 0;
 }
@@ -958,7 +1187,7 @@ void free_resp_item (void * arg)
 
 void* twolsfqd_time_window(void * arg)
 {
-	pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
+	//pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
 	/* waiting time span over two time window problem
 	 */
 
@@ -978,13 +1207,21 @@ void* twolsfqd_time_window(void * arg)
 		pthread_mutex_lock(&twolsfqd_sfqd_queue_mutex);
 		timewindow_id++;
 
-		fprintf(stderr, "Time window working...after sleeping %i micro seconds\n", twolsfqd_timewindow*1000);
+		fprintf(stderr, "%s Time window working...after sleeping %i micro seconds\n", log_prefix, twolsfqd_timewindow*1000);
 		next_timewindow_queue_threshold = twolsfqd_edf_infinite;
 
 		timewindow_nintyfive = 0.95 * timewindow_total_resp;
+
+		/* this value should bear some outstanding working time too if no work completed in last time window!
+		 * otherwise, 95 percentile may take outstanding continuous working time if it does not finish.
+		 * but total resp *.95 as a threshold may be 0...thus the smallest waiting time in the outstanding queue
+		 * may be used as a 95th percentile response time.
+		 * */
+
+
+		fprintf(stderr,"total resp time is  %i, threshold is %i\n", timewindow_total_resp, timewindow_nintyfive);
 		nintyfive_percentile();
 		//clear resp list
-
 
 		PINT_llist_p queue= iedf_llist_queue->next;
 		struct twolsfqd_queue_item * item;
@@ -992,7 +1229,7 @@ void* twolsfqd_time_window(void * arg)
 		int* item_counts = (int *)malloc(num_apps*sizeof(int));
 		memset(item_counts, 0, num_apps*sizeof(int));
 
-		//look for the items in the edf that are missing today's dealine
+		//look for the items in the edf that are missing today's deadline
 		while (queue!=NULL)
 		{
 			item = (struct twolsfqd_queue_item*)(((struct generic_queue_item *)queue->item)->embedded_queue_item);
@@ -1002,7 +1239,7 @@ void* twolsfqd_time_window(void * arg)
 					(int)next_time_window_end.tv_sec,(int)next_time_window_end.tv_usec );
 			if (timercmp(&(item->deadline), &current_time_window_end, <))
 			{
-				fprintf(depthtrack,"item in next window end\n");
+				fprintf(depthtrack,"item in current window end\n");
 				item_counts[item->app_index]++;
 			}
 			else if (timercmp(&(item->deadline), &next_time_window_end, <))
@@ -1019,6 +1256,7 @@ void* twolsfqd_time_window(void * arg)
 
 		fprintf(depthtrack, "current working: %i next deadline: %i arrival_deadline: %i, ttl completed: %i, edf length: %i arrival: %i\n",
 				timewindow_current_queue_length, item_count, timewindow_arrival_deadline, timewindow_ttl_completed, edf_queue_length, timewindow_arrival);
+
 		next_timewindow_X_lower_length = (timewindow_current_queue_length + item_count + timewindow_arrival_deadline);
 
 
@@ -1028,49 +1266,26 @@ void* twolsfqd_time_window(void * arg)
 		if (timewindow_ttl_completed == 0)
 		{
 			//
-			next_timewindow_X_lower = ((float)(timewindow_queue_threshold)); //keep estimation
+			timewindow_ttl_completed = 1;//((float)(timewindow_queue_threshold)); //keep estimation
 		}
-		else
-		{
-			next_timewindow_X_lower = (float)(next_timewindow_X_lower_length * timewindow_queue_threshold) / timewindow_ttl_completed;
-		}
+		next_timewindow_X_lower = (float)((float)next_timewindow_X_lower_length * (float)timewindow_queue_threshold) / (float)timewindow_ttl_completed;
 		next_timewindow_X_upper_length = (timewindow_current_queue_length + edf_queue_length + timewindow_arrival);
-		///////////////////////
+		next_timewindow_X_upper = (float)((float)next_timewindow_X_upper_length * (float)timewindow_queue_threshold) / (float)timewindow_ttl_completed;
 
-
-
-		if (timewindow_ttl_completed == 0)
-		{
-			next_timewindow_X_upper = ((float)(timewindow_queue_threshold));
-		}
-		else
-		{
-			next_timewindow_X_upper = (float)(next_timewindow_X_upper_length * timewindow_queue_threshold) / timewindow_ttl_completed;
-		}
+		fprintf(depthtrack,"x_upper=%i+%i+%i\n",timewindow_current_queue_length, edf_queue_length, timewindow_arrival);
 		fprintf(depthtrack, "x_under:%f = %i * %i / %i x~bar:%f = %i * %i / %i\n",
 				next_timewindow_X_lower,  next_timewindow_X_lower_length, timewindow_queue_threshold, timewindow_ttl_completed,
 				next_timewindow_X_upper, next_timewindow_X_upper_length, timewindow_queue_threshold, timewindow_ttl_completed);
+		fprintf(stderr, "x_under:%f = %i * %i / %i x~bar:%f = %i * %i / %i\n",
+				next_timewindow_X_lower,  next_timewindow_X_lower_length, timewindow_queue_threshold, timewindow_ttl_completed,
+				next_timewindow_X_upper, next_timewindow_X_upper_length, timewindow_queue_threshold, timewindow_ttl_completed);
+
+
 		int overload=1;
 
-		twolsfqd_missed_time = (twolsfqd_missed_storage)*iedf_deadlines[i]
-		                               + twolsfqd_missed_time*2;
-		int all_storage_miss=1;
-		for (i=0; i<num_apps; i++)
-		{
-			//count the max spanned # of timewindows here for miss-on-storage requests
-			//for all the storage items (dispatch time !=null):
-			//item->start miss!=null
-			//calculate diff, reserve max diff for every class
-			//for those start_miss = null, also try to calculate
-			//the number of requests that have passed their actual deadline to finish
+/*		twolsfqd_missed_time = (twolsfqd_missed_storage)*iedf_deadlines[i]
+		                               + twolsfqd_missed_time*2;*/
 
-			if (twolsfqd_missed_storages[i]==0)
-			{
-				all_storage_miss=0;
-
-				break;
-			}
-		}
 		for (i=0; i<num_apps; i++)
 		{
 
@@ -1097,54 +1312,41 @@ void* twolsfqd_time_window(void * arg)
 
 			float e_i;
 
-			if (timewindow_completed[i]==0)//95 percentile will be insane
+			//////////////////////
+
+			e_i= ((float)(iedf_deadlines[i]-class_i_edf_waiting))/timewindow_95_percentile_i;
+
+			fprintf(depthtrack,"e_i calc first: %f = (%i-%i)/%i\n",
+					e_i,iedf_deadlines[i],class_i_edf_waiting,timewindow_95_percentile_i);
+
+			if (e_i>1000)
 			{
-				if ( all_storage_miss != 0 )//do this only if all apps are overloaded
-					//current storage miss !=0
-				{//this branch calculates accumulative 95 percentile, when they missed before dispatching
+				e_i= ((float)(iedf_deadlines[i]-class_i_edf_waiting))/iedf_deadlines[i];
+				fprintf(depthtrack,"e_i calc infinity: %f = (%i-%i)/%i\n",
+						e_i, iedf_deadlines[i],class_i_edf_waiting,iedf_deadlines[i]);
 
-					timewindow_95_percentile_i = iedf_deadlines[i]*1.1;//assume that we're in not good shape
-					//what if it has missed deadlines for a couple of timewindow?
-					//- use the reserved max missed span as the factor
-
-
-					//value will be deducted once it's finished, the amount that it has been multiplied.
-					e_i= ((float)(iedf_deadlines[i]-class_i_edf_waiting))/timewindow_95_percentile_i;
-
-				}
-				else //monitor if the I/Os are submitted when they're ahead of deadline, but it's is now missing their deadlines
-				{//else, perform a check on those who missed after dispatching
-					//count
-					//if ()
-					{
-						//e_i = 1.0;
-					}
-						//else
-					{
-						ei_ = 1.0;
-					}
-
-				}
 			}
-			else
+			if (e_i<-1000)
 			{
-				///////////////////
-				e_i= ((float)(iedf_deadlines[i]-class_i_edf_waiting))/timewindow_95_percentile_i;
+
+				e_i=1.1;
+				fprintf(depthtrack,"e_i calc negative: %f\n", e_i);
+
 			}
 
 			if (e_i<0.001)
 			{
-				fprintf(stderr,"e_i error! %f = 95: %i, class %i deadline: %i, edf waiting: %i\n",
+				fprintf(stderr,"e_i calc error! %f = 95: %i, class %i deadline: %i, edf waiting: %i\n",
 						e_i, timewindow_95_percentile_i, i+1, iedf_deadlines[i], class_i_edf_waiting);
-				fprintf(depthtrack,"e_i error! %f = 95: %i, class %i deadline: %i, edf waiting: %i\n",
+				fprintf(depthtrack,"e_i calc error! %f = 95: %i, class %i deadline: %i, edf waiting: %i\n",
 						e_i, timewindow_95_percentile_i, i+1, iedf_deadlines[i], class_i_edf_waiting);
 				e_i=0.001;
+				fprintf(stderr,"e_i calc second: %f\n", e_i);
 			}
 
 			fprintf(depthtrack,"APP %i 95: %i edf waiting: %i\n",
 					i+1, timewindow_95_percentile_i, class_i_edf_waiting);
-			//fprintf(stderr,"APP %i RT: %f X_: %f X~: %f EI: %f\n",
-			//		i+1, next_timewindow_RT, next_timewindow_X_lower, next_timewindow_X_upper, e_i);
+
 			fprintf(depthtrack,"APP %i RT: %f X_: %f X~: %f EI: %f\n",
 					i+1, next_timewindow_RT, next_timewindow_X_lower, next_timewindow_X_upper, e_i);
 			//x_upper available
@@ -1161,15 +1363,20 @@ void* twolsfqd_time_window(void * arg)
 				if (next_timewindow_RT < next_timewindow_X_lower)
 				{
 
-					fprintf(depthtrack, "case 1 RT = %f = (ei*L = %f * %i ) < X_ = %f\n",
-							next_timewindow_RT, e_i, timewindow_queue_threshold, next_timewindow_X_lower);
+					fprintf(depthtrack, "case 1 of class %i RT = %f = (ei*L = %f * %i ) < X_ = %f\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, next_timewindow_X_lower);
+					fprintf(stderr, "case 1 of class %i RT = %f = (ei*L = %f * %i ) < X_ = %f\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, next_timewindow_X_lower);
 					next_timewindow_queue_thresholds[i] = twolsfqd_edf_infinite;
 
 				}
 				else if (next_timewindow_RT > next_timewindow_X_upper)
 				{
-					fprintf(depthtrack, "case 2 RT = %f = (ei*L = %f * %i ) > X~ = %f\n",
-							next_timewindow_RT, e_i, timewindow_queue_threshold, next_timewindow_X_upper);
+					fprintf(depthtrack, "case 2 of class %i RT = %f = (ei*L = %f * %i ) > X~ = %f\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, next_timewindow_X_upper);
+					fprintf(stderr, "case 2 of class %i RT = %f = (ei*L = %f * %i ) > X~ = %f\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, next_timewindow_X_upper);
+
 					if (next_timewindow_X_upper<0.01)
 						next_timewindow_X_upper=0.01;
 					next_timewindow_queue_thresholds[i] = next_timewindow_X_upper;
@@ -1177,15 +1384,21 @@ void* twolsfqd_time_window(void * arg)
 				}
 				else if (next_timewindow_RT < timewindow_queue_threshold || timewindow_max_outstanding >= timewindow_queue_threshold)
 				{
-					fprintf(depthtrack, "case 3 RT = %f = (ei*L = %f * %i ) < L = %i || MAXO = %i >>= L\n",
-							next_timewindow_RT, e_i, timewindow_queue_threshold, timewindow_queue_threshold, timewindow_max_outstanding);
+					fprintf(depthtrack, "case 3 class %i RT = %f = (ei*L = %f * %i ) < L = %i || MAXO = %i >>= L\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, timewindow_queue_threshold, timewindow_max_outstanding);
+					fprintf(stderr, "case 3 class %i RT = %f = (ei*L = %f * %i ) < L = %i || MAXO = %i >>= L\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, timewindow_queue_threshold, timewindow_max_outstanding);
+
 					next_timewindow_queue_thresholds[i] = next_timewindow_RT;
 					overload=0;
 				}
 				else if (next_timewindow_RT >= timewindow_queue_threshold && timewindow_max_outstanding < timewindow_queue_threshold)
 				{
-					fprintf(depthtrack, "case 4 RT = %f = (ei*L = %f * %i ) >= L = %i && MAXO = %i < L\n",
-							next_timewindow_RT, e_i, timewindow_queue_threshold, timewindow_queue_threshold, timewindow_max_outstanding);
+					fprintf(depthtrack, "case 4 of class %i RT = %f = (ei*L = %f * %i ) >= L = %i && MAXO = %i < L\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, timewindow_queue_threshold, timewindow_max_outstanding);
+					fprintf(stderr, "case 4 of class %i RT = %f = (ei*L = %f * %i ) >= L = %i && MAXO = %i < L\n",
+							i, next_timewindow_RT, e_i, timewindow_queue_threshold, timewindow_queue_threshold, timewindow_max_outstanding);
+
 					//next_timewindow_queue_thresholds[i] = next_timewindow_queue_thresholds[i];
 					overload=0;
 				}
@@ -1193,6 +1406,11 @@ void* twolsfqd_time_window(void * arg)
 				{
 
 					fprintf(stderr,"cannot decide 1\n");
+					fprintf(stderr,"next_timewindow_RT %f\n",next_timewindow_RT);
+					fprintf(stderr,"next_timewindow_X_lower %f\n",next_timewindow_X_lower);
+					fprintf(stderr,"next_timewindow_X_upper %f\n",next_timewindow_X_upper);
+					fprintf(stderr,"timewindow_queue_threshold %i\n",timewindow_queue_threshold);
+					fprintf(stderr,"timewindow_max_outstanding %i\n", timewindow_max_outstanding);
 					exit(-3);
 				}
 
@@ -1207,27 +1425,36 @@ void* twolsfqd_time_window(void * arg)
 					next_timewindow_RT=0.01;
 				}
 
-				if (next_timewindow_X_lower_length < timewindow_ttl_completed * 0.9)
+				if (next_timewindow_X_lower_length < MAX(timewindow_ttl_completed * 0.9,1))//guard against tt_completed=0
 				{
 					if (next_timewindow_X_lower < 0.01)
 					{
 						next_timewindow_X_lower = 0.01;
 					}
-					fprintf(depthtrack, "case 5 X_ = %i < X*0.9 = %i; RT = %f (e_i*MAXO = %f * %i)\n",
-							next_timewindow_X_lower_length ,timewindow_ttl_completed, next_timewindow_RT, e_i, timewindow_max_outstanding);
+					fprintf(depthtrack, "case 5 of class %i X_ = %i < X*0.9 = %i; RT = %f (e_i*MAXO = %f * %i)\n",
+							i, next_timewindow_X_lower_length ,timewindow_ttl_completed, next_timewindow_RT, e_i, timewindow_max_outstanding);
+					fprintf(stderr, "case 5 of class %i X_ = %i < X*0.9 = %i; RT = %f (e_i*MAXO = %f * %i)\n",
+							i, next_timewindow_X_lower_length ,timewindow_ttl_completed, next_timewindow_RT, e_i, timewindow_max_outstanding);
+
 					next_timewindow_queue_thresholds[i]=MAX(next_timewindow_RT, next_timewindow_X_lower);
 					overload=0;
 				}
-				else if (next_timewindow_X_upper_length > timewindow_ttl_completed * 0.9)
+				else if (next_timewindow_X_upper_length >= timewindow_ttl_completed * 0.9)
 				{
-					fprintf(depthtrack, "case 6 X~ = %i > X*0.9 = %i; RT = %f (e_i*MAXO = %f * %i)\n",
-							next_timewindow_X_upper_length, timewindow_ttl_completed, next_timewindow_RT, e_i, timewindow_max_outstanding);
+					fprintf(depthtrack, "case 6 of class %i X~ = %i > X*0.9 = %i; RT = %f (e_i*MAXO = %f * %i)\n",
+							i, next_timewindow_X_upper_length, timewindow_ttl_completed, next_timewindow_RT, e_i, timewindow_max_outstanding);
+					fprintf(stderr, "case 6 of class %i X~ = %i > X*0.9 = %i; RT = %f (e_i*MAXO = %f * %i)\n",
+							i, next_timewindow_X_upper_length, timewindow_ttl_completed, next_timewindow_RT, e_i, timewindow_max_outstanding);
+
 					next_timewindow_queue_thresholds[i]=twolsfqd_edf_infinite;
 
 				}
 				else
 				{
 					fprintf(stderr,"cannot decide 2\n");
+					fprintf(stderr,"next_timewindow_X_lower_length: %i \n",next_timewindow_X_lower_length);
+					fprintf(stderr,"timewindow_ttl_completed, %i \n", timewindow_ttl_completed);
+					fprintf(stderr,"next_timewindow_X_upper_length %i\n", next_timewindow_X_upper_length);
 					exit(-4);
 				}
 
@@ -1240,12 +1467,8 @@ void* twolsfqd_time_window(void * arg)
 
 		//do a ceiling here from float to integer
 
-
-
-
-		fprintf(depthtrack,"The next timewindow threshold is found: %f->%i\n", next_timewindow_queue_threshold, (int)ceil(next_timewindow_queue_threshold));
-
-
+		fprintf(depthtrack,"case~ The next timewindow threshold is found: %f->%i\n", next_timewindow_queue_threshold, (int)ceil(next_timewindow_queue_threshold));
+		fprintf(stderr,"case~ The next timewindow threshold is found: %f->%i\n", next_timewindow_queue_threshold, (int)ceil(next_timewindow_queue_threshold));
 		timewindow_queue_threshold = ceil(next_timewindow_queue_threshold);
 		//============begins next time window==============
 
@@ -1260,7 +1483,7 @@ void* twolsfqd_time_window(void * arg)
 		timewindow_ttl_completed=0;
 		timewindow_arrival=0;
 		timewindow_arrival_deadline=0;
-
+		timewindow_total_resp=0;
 
 		for (i=0; i< num_apps; i++)
 		{
@@ -1277,7 +1500,7 @@ void* twolsfqd_time_window(void * arg)
 		if (overload==1)
 		{
 			fprintf(depthtrack,"The next timewindow is overloaded\n");
-
+			fprintf(stderr,"The next timewindow is overloaded\n");
 			twolsfqd_update_spareness();
 
 			twolsfqd_dequeue_all(NULL);
@@ -1291,7 +1514,7 @@ void* twolsfqd_time_window(void * arg)
 		//if next window is overloaded
 
 		//twolsfqd_update_spareness();
-		fprintf(stderr,"calling in time window\n");
+		//fprintf(stderr,"calling in time window\n");
 		twolsfqd_edf_dequeue_all(-1);
 		pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
 	}
@@ -1301,7 +1524,21 @@ void* twolsfqd_time_window(void * arg)
 void twolsfqd_replenish()
 {
 	//it is replensih to FULL CREDITS whether its a timeout or a spareness change
-	twolsfqd_current_depth=twolsfqd_replenish_amount;
+	int i;
+	for (i=0;i<num_apps;i++)
+	{
+		fprintf(depthtrack,"replenishing app %i which has %i left, with ", i, sarc_credits[i]);
+		sarc_credits[i]=app_stats[i].app_rate * 1048576 /1000 * twolsfqd_replenish_time ;
+		fprintf(depthtrack,"app %i is being replenished with %i credits\n",i, sarc_credits[i]);
+		//how many slots are for this app
+
+	}
+
+
+	//twolsfqd_current_depth=(int)amt;
+
+	//fprintf(depthtrack,"replenishing a total of %i\n",(int)amt);
+	//twolsfqd_replenish_amount;
 	char timestring[20];
 	struct timeval now;
 	gettimeofday(&now, 0);
@@ -1314,7 +1551,7 @@ void twolsfqd_replenish()
 
 void* twolsfqd_time_replenish(void * arg)
 {
-	pthread_mutex_lock(&twolsfqd_sfqd_queue_mutex);
+
 	int ureplenishtime=twolsfqd_replenish_time*1000;//milli*1000=micro
 	struct timeval diff;
 	struct timeval time_already_passed;
@@ -1323,23 +1560,28 @@ void* twolsfqd_time_replenish(void * arg)
 	int useconds_to_sleep;
 	while (1)
 	{
+		pthread_mutex_lock(&twolsfqd_sfqd_queue_mutex);
 		//first sleep for at least replenish time amount
 		//then check if during the sleep other events triggered replenishment and advanced last replenish time
 		useconds_to_sleep = ureplenishtime- time_already_passed.tv_sec*1000000 - time_already_passed.tv_usec;
 		if (useconds_to_sleep<=0)
 		{
 			twolsfqd_replenish();
+			fprintf(stderr,"replenish\n");
 			twolsfqd_dequeue_all(NULL);
+			pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
 		}
 		else
 		{
-			fprintf(stderr,"replenish Sleeping %i microseconds\n", useconds_to_sleep);
+			pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
+			//fprintf(stderr,"%s replenish Sleeping %i microseconds\n", log_prefix, useconds_to_sleep);
 			usleep(useconds_to_sleep);
 		}
+
 		get_time_diff(&last_replenish_time, &time_already_passed);
 
 	}
-	pthread_mutex_unlock(&twolsfqd_sfqd_queue_mutex);
+
 
 }
 

@@ -7,16 +7,18 @@
 
 #ifndef SCHEDULER_MAIN_H_
 #define SCHEDULER_MAIN_H_
-#define SCHEDULER_COUNT 7
+#define SCHEDULER_COUNT 8
 #define SCHEDULER_DEFAULT SFQD_SCHEDULER
 extern char* chosen_scheduler;
 extern int io_purecost;
 #include "performance.h"
 #include "dictionary.h"
+#include "proxy2.h"
+extern FILE* depthtrack;
 struct socket_info
 {
 
-	int request_socket;
+	int request_socket;//index in the socket pool
 	int data_port; //internal forwarding parameter
 	char* data_ip;
 	int data_socket;
@@ -36,6 +38,10 @@ struct socket_info
 
 struct pvfs_info
 {
+	enum PVFS_server_op op;
+	int handle;
+	int mask;
+	int fsid;
 	int io_type;
 	int tag;
 	int current_data_size;
@@ -61,7 +67,7 @@ struct generic_queue_item
 	void * embedded_queue_item;//four tags, embedded here.
 };
 
-enum dequeue_event{NEW_IO, COMPLETE_IO, DIFF_CHANGE};
+enum dequeue_event{NEW_IO, COMPLETE_IO, DIFF_CHANGE, NEW_META};
 struct dequeue_reason
 {
 	enum dequeue_event event;
@@ -88,6 +94,7 @@ struct scheduler_method
     int (* sch_add_ttl_throughput)(int this_amount, int app_index);
     int (* sch_calculate_diff)(int app_index);
     int sch_self_dispatch;
+    int sch_accept_meta;
     //when sockets are disconnected, the unfinished items in the queue should be removed
     //- next time they'll occupy the seats in the service queue and eventually block the I/O
 
@@ -103,4 +110,5 @@ extern int scheduler_index;
 #include "scheduler_SFQD3.h"//one queue for each application for non-work conserving
 #include "scheduler_vDSFQ2.h"
 #include "scheduler_2LSFQD.h"
+#include "scheduler_SFQD_Full.h"
 #endif /* SCHEDULER_MAIN_H_ */

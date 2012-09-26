@@ -11,7 +11,7 @@
 #include "scheduler_main.h"
 #define SFQD2_SCHEDULER "SFQD2"
 #define __STATIC_SCHEDULER_SFQD2__ 1
-
+/* trial of a variation of local SFQD who uses different queues for small I/Os versus large I/Os */
 extern char** app_names;
 extern int sfqd2_depth;
 extern int sfqd2_purecost;

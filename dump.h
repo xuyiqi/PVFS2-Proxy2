@@ -21,7 +21,13 @@ enum PINT_hint_type
     PINT_HINT_RANK,
     PINT_HINT_SERVER_ID
 };
+struct meta
+{
+	unsigned long long handle;
+	unsigned long long mask;
+	int fsid;
 
+};
 struct dist
 {
 	int current_server_number;
@@ -34,5 +40,6 @@ struct dist
 	int small_total;
 };
 
+struct meta * dump_meta_header (char* buffer, enum msg_type type, char* source_ip);
 struct dist  * dump_header(char* buffer, enum msg_type type, char* source);
 #endif /* DUMP_H_ */

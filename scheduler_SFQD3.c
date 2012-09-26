@@ -92,7 +92,7 @@ int sfqd3_init()
 	int i;
 	sfqd3_heap_queues=(struct heap**)malloc(num_apps*sizeof(struct heap*));
 	sfqd3_last_finish_tags=(int*)malloc(num_apps*sizeof(int));
-	sfqd3_depths=(int*)malloc(num_apps*sizeof(int));
+
 	sfqd3_current_depths=(int*)malloc(num_apps*sizeof(int));
 	sfqd3_virtual_times=(int*)malloc(num_apps*sizeof(int));
 
@@ -102,7 +102,6 @@ int sfqd3_init()
 		sfqd3_heap_queues[i]=(struct heap *)malloc(sizeof(struct heap));
 		heap_init(sfqd3_heap_queues[i]);
 		sfqd3_last_finish_tags[i]=0;
-		sfqd3_depths[i]=0;
 		sfqd3_current_depths[i]=0;
 		sfqd3_virtual_times[i]=0;
 
@@ -111,10 +110,6 @@ int sfqd3_init()
 	char* deptht=(char*)malloc(sizeof(char)*40);
 	snprintf(deptht, 40, "%s.depthtrack.txt", log_prefix);
 	sfqd3_depthtrack = fopen(deptht,"w");
-
-	sfqd3_depths[0]=iniparser_getint(dict, "SFQD3:depth", 8);
-	sfqd3_depths[1]=iniparser_getint(dict, "SFQD3:depth", 8);
-	fprintf(stderr,"SFQD using depth_large:%i\n",sfqd3_depths[1]);
 
 }
 
@@ -685,6 +680,10 @@ struct generic_queue_item* sfqd3_get_next_request(struct dequeue_reason r)
 
 int sfqd3_load_data_from_config (dictionary * dict)
 {
+	sfqd3_depths=(int*)malloc(num_apps*sizeof(int));
+	sfqd3_depths[0]=iniparser_getint(dict, "SFQD3:depth", 8);
+	sfqd3_depths[1]=iniparser_getint(dict, "SFQD3:depth", 8);
+	fprintf(stderr,"SFQD using depth_large:%i\n",sfqd3_depths[1]);
 
 
 }

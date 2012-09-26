@@ -40,6 +40,7 @@ int* iedf_deadlines;
 int* apps;
 int num_apps=0;
 int total_weight=0;
+int total_response=0;
 extern int scheduler_on;
 extern int* received_requests;
 extern int* dispatched_requests;
@@ -89,7 +90,7 @@ struct ip_application* ip_weight(char* ip)
 		//do a is_in_range match in the list
 		//if returns true, return the index value
 	}
-	fprintf(stderr, "error:range not found, returning default(last) item not available yet!\n");
+	fprintf(stderr, "IP check error: range not found, returning default(last) item function not available yet!\n");
 	exit(-1);
 	return default_ip_application;
 }
@@ -470,17 +471,32 @@ void load_configuration()
 		char* curr_weight=(char*)malloc(2+weights_len+app_len);//'weights:appxx\0'
 		sprintf(curr_weight,"weights:%s",curr_app);
 
+		int latencies_len=strlen("latencies");
+		char* curr_lat=(char*)malloc(2+latencies_len+app_len);//'weights:appxx\0'
+		sprintf(curr_lat,"latencies:%s",curr_app);
+
 
 		Dprintf(D_CACHE,"processing %s\n",curr_app);
 		app_stats[i].app_weight=iniparser_getint(dict, curr_weight ,0);
+		app_stats[i].app_response=iniparser_getint(dict, curr_lat ,0);
+
 
 		if (app_stats[i].app_weight==0)
 		{
 			fprintf(stderr,"Error app%i weight:0\n",i);
 			exit(-1);
 		}
+		if (app_stats[i].app_response==0)
+		{
+			fprintf(stderr,"Error app%i response:0\n",i);
+			exit(-1);
+		}
 		total_weight+=app_stats[i].app_weight;
 		Dprintf(D_CACHE,"weight:%i\n",app_stats[i].app_weight);
+
+		total_response+=app_stats[i].app_response;
+		Dprintf(D_CACHE,"response:%i\n",app_stats[i].app_response);
+
 		int location_len=strlen("locations");
 		char* curr_location=(char*)malloc(app_len+2+location_len);//'appxx_locations\0'
 		sprintf(curr_location,"%s_locations",curr_app);
@@ -532,6 +548,7 @@ void load_configuration()
 
 	}
 	fprintf(stderr,"total_weight:%i\n", total_weight);
+	fprintf(stderr,"total_response:%i\n", total_response);
 
 	if (scheduler_on)
 	{

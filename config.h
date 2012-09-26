@@ -15,7 +15,10 @@ struct app_statistics
 {
     int app_index;
     int app_weight;
-    int deadline;
+    int app_response;
+    int app_rate;
+    int app_nr;
+
     int received_requests;
     int completed_requests;
     int dispatched_requests;

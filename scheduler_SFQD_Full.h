@@ -5,18 +5,18 @@
  *      Author: yiqi
  */
 
-#ifndef SCHEDULER_SFQD_H_
-#define SCHEDULER_SFQD_H_
+#ifndef SCHEDULER_SFQD_FULL_H_
+#define SCHEDULER_SFQD_FULL_H_
 #include "heap.h"
 #include "scheduler_main.h"
 #include "config.h"
-#define SFQD_SCHEDULER "SFQD"
-#define __STATIC_SCHEDULER_SFQD__ 1
+#define SFQD_FULL_SCHEDULER "SFQD_FULL"
+#define __STATIC_SCHEDULER_SFQD_FULL_ 1
 
 extern char** app_names;
-extern int sfqd_depth;
-extern int sfqd_purecost;
-struct sfqd_queue_item
+extern int sfqdfull_depth;
+extern int sfqdfull_purecost;
+struct sfqdfull_queue_item
 {
 	int request_socket;
 	int start_tag;
@@ -59,28 +59,28 @@ extern int num_apps;
 extern int depth;
 extern int purecost;
 //void initialize_hashtable();
-int sfqd_packet_cmp(struct heap_node* _a, struct heap_node* _b);
-extern struct heap *sfqd_heap_queue;
-struct generic_queue_item* sfqd_get_next_request(struct dequeue_reason r);
-extern int sfqd_virtual_time;
-int sfqd_add_request(int r_socket_index,int d_socket_index, int length,
+int sfqdfull_packet_cmp(struct heap_node* _a, struct heap_node* _b);
+extern struct heap *sfqdfull_heap_queue;
+struct generic_queue_item* sfqdfull_get_next_request(struct dequeue_reason r);
+extern int sfqdfull_virtual_time;
+int sfqdfull_add_request(int r_socket_index,int d_socket_index, int length,
 		int tag, int io_type, char* request, int request_size);
 int set_start_end(char* range, char *splitter, struct ip_application* ip_range);
 int set_IP_numbers(char* ip_0, short* i1,short* i2, short* i3, short* i4);
-int sfqd_enqueue(struct socket_info * si, struct pvfs_info* pi);
-struct generic_queue_item * sfqd_dequeue(struct dequeue_reason r);
-void sfqd_get_scheduler_info();
-int sfqd_update_on_request_completion(void* arg);
-int sfqd_load_data_from_config (dictionary * dict);
-int sfqd_init();
-int sfqd_is_idle();
-int sfqd_current_size();
+int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi);
+struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r);
+void sfqdfull_get_scheduler_info();
+int sfqdfull_update_on_request_completion(void* arg);
+int sfqdfull_load_data_from_config (dictionary * dict);
+int sfqdfull_init();
+int sfqdfull_is_idle();
+int sfqdfull_current_size();
 extern int virtual_time;
-extern int current_depth;
+extern int sfqdfull_current_depth;
 extern char* clients[];
 extern int client_app[];
 extern int* apps;
 extern int default_weight;
-extern int* stream_ids;
-extern int* last_finish_tags;
+extern int* sfqdfull_stream_ids;
+extern int* sfqdfull_last_finish_tags;
 #endif /* SCHEDULER_H_ */

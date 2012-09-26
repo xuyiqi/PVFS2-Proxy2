@@ -38,6 +38,7 @@
 #include "performance.h"
 #include "message.h"
 #include "config.h"
+extern char* log_prefix;
 char *directions[2]={"SERVER","CLIENT"};
 int enable_first_receive=0;
 struct socket_pool  s_pool;
@@ -58,6 +59,10 @@ extern char* log_prefix;
 extern long long total_throughput;
 extern int total_weight;
 //struct queue_item * current_item=NULL;
+
+int finished[2];
+int completerecv[2];
+int completefwd[2];
 int main(int argc, char **argv)
 {
 
@@ -86,6 +91,7 @@ int main(int argc, char **argv)
 
     if (scheduler_on)
     {
+    	scheduler_main_init();
         (*(static_methods[scheduler_index]->sch_initialize))();
     }
 
@@ -220,10 +226,11 @@ int main(int argc, char **argv)
                     }
                     if (s_pool.poll_list[i].fd==listen_socket)//if this is a listening socket event, then a new connection is coming in
                     {
-                            fprintf(stderr,"accepting...\n");
+
                             int client_socket = accept(listen_socket, (struct sockaddr *)&their_addr, &tsize);
+                            fprintf(stderr,"%s accepting... from socket %i\n", log_prefix, client_socket);
                             if (client_socket <0) {
-                                    fprintf(stderr,"Error accepting %i\n",client_socket);
+                                    fprintf(stderr,"%s Error accepting %i\n",log_prefix, client_socket);
                                     exit (-3);
                             }
 
@@ -257,7 +264,7 @@ int main(int argc, char **argv)
                         int client_port=ntohs(((struct sockaddr_in *)&their_addr)->sin_port);
                         int ssize = sprintf(client_ip,"%u.%u.%u.%u",(addr<<24)>>24,	(addr<<16)>>24,(addr<<8)>>24, addr>>24);
 
-                        //fprintf(stderr,"client ip got\n");
+                        fprintf(stderr,"%s client ip got %s %i\n", log_prefix, client_ip, client_socket);
                         int server_socket = BMI_sockio_new_sock();
                         //Dprintf(L_NOTICE,"Connecting...%i\n",server_socket);
                         char * server_ip = (char*)malloc(25);
@@ -360,11 +367,12 @@ int main(int argc, char **argv)
                         	{
 								if (req_stat==-1)
 								{
-									fprintf(stderr,"req returning 0, closing?\n");
+									fprintf(stderr,"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11req returning -1, closing?!!!!!!!!!!!!!1\n");
+
 								}
 								else if (req_stat==-2)
 								{
-									fprintf(stderr,"XXXXXXXXXXXXXXXXXXcontinuingXXXXXXXXXXXXXXXxx\n");
+									//fprintf(stderr,"XXXXXXXXXXXXXXXXXXcontinuingXXXXXXXXXXXXXXXxx\n");
 									continue;
 								}
 								else
@@ -769,15 +777,20 @@ int main(int argc, char **argv)
                             	{
                             		//completion of message protocol declared size!
                             		//fprintf(stderr,"forwarding complete, cleaning buffer on socket %i\n",s_pool.socket_state_list[counter_index].socket);
-					//				free(s_pool.socket_state_list[counter_index].buffer);
+                            		if (s_pool.socket_state_list[counter_index].op==PVFS_SERV_WRITE_COMPLETION)
+                            		{
+                            			s_pool.socket_state_list[counter_index].op=0;
+                            			int app_index = s_pool.socket_state_list[i].app_index;
+                            			completefwd[app_index]++;
+                            			completerecv[app_index]--;
+                            		}
+									free(s_pool.socket_state_list[counter_index].buffer);
 
 									s_pool.socket_state_list[counter_index].buffer=NULL;
 									s_pool.socket_state_list[counter_index].buffer_tail=0;
 									s_pool.socket_state_list[counter_index].buffer_head=0;
 									s_pool.socket_state_list[counter_index].buffer_size=0;
                             	}
-
-
                             }
                         }
                     }

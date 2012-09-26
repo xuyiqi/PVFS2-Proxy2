@@ -6,6 +6,7 @@
 
 
 #include "llist.h"
+#include "scheduler_SFQD.h"
 #include "scheduler_DSFQ.h"
 #include "scheduler_main.h"
 #include "scheduler_2LSFQD.h"
@@ -27,6 +28,21 @@ int list_req_comp(void * a, void * b)
 			((long int)a)
 			==((struct generic_queue_item *)b)->item_id
 	);
+}
+int list_sfqd_sort_comp(PINT_llist * a, PINT_llist * b)//used for sfqd item only!
+{
+	//a is an int,
+	//b is an item
+	struct generic_queue_item* generic_item_a = (struct generic_queue_item *) (a->item);
+	struct generic_queue_item* generic_item_b = (struct generic_queue_item *) (b->item);
+	struct sfqd_queue_item* s_a = (struct sfqd_queue_item *) (generic_item_a->embedded_queue_item);
+	struct sfqd_queue_item* s_b = (struct sfqd_queue_item *) (generic_item_b->embedded_queue_item);
+
+	//ordered first by tag for inter-app barrier
+	//then by queue_item_id by natural coming order
+
+	return s_a->start_tag-s_b->start_tag;
+
 }
 
 int list_dsfq_sort_comp(PINT_llist * a, PINT_llist * b)//used for dsfq item only!

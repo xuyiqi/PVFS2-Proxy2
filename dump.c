@@ -303,7 +303,7 @@ void dump_address (char* from, char* to)
 	//Dprintf(D_CALL,"From: %s; To: %s\n", from, to);
 }
 
-
+/*this function actually executes a get_io_type task*/
 
 int dump_header2(char* buffer,int small)
 {
@@ -376,6 +376,294 @@ int dump_header2(char* buffer,int small)
 	offset+=length;
 	//Dprintf(D_CALL, "pvfs header done, offset is %i\n",offset);
 	return dump_IO_Request2(buffer, offset,small);//hints, distribution, etc
+
+}
+struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
+{
+	//Dprintf(D_CALL,"=======source:%s======\n", source );
+	int offset=0;
+	int length;/*//=4;//mnr
+	//long long mnr;
+
+	//mnr=output_param(buffer, offset, length , "magic number",NULL,0);
+	//Dprintf(D_CALL,"mnr:%lli\n", mnr);
+	offset+=length;
+	length=4;//mode
+
+	//long long mode=output_param(buffer, offset, length , "mode",NULL,0);
+	//Dprintf(D_CALL,"mode:%lli\n", mode);
+	offset+=length;
+	length=8;//tag
+
+	//long long tag =output_param(buffer, offset, length , "tag",NULL,0);
+	//Dprintf(D_CALL,"tag:%lli\n", tag);
+	offset+=length;*/
+	length=8;//size
+
+	offset+=16;
+
+	long long size=output_param(buffer, offset, length , "size",NULL,0);
+
+	offset+=length;
+	length=4;//version
+
+	//long long version=output_param(buffer, offset, length , "version",NULL,0);
+	//Dprintf(D_CALL,"version:%lli\n", version);
+	offset+=length;
+	length=4;//encoding
+
+	//long long encoding=output_param(buffer, offset, length , "encoding",NULL,0);
+	//Dprintf(D_CALL,"encoding:%lli\n", encoding);
+	offset+=length;
+	length=4;//operation
+
+	long long operation = output_param(buffer, offset, length, "pvfs_operation", ops,40);
+	//Dprintf(D_CALL,"operation:%lli\n", operation);
+
+	offset+=length;
+/*
+
+	length=4;//padding 4
+	offset+=length;
+	length=4;
+	//long long user_id = output_param(buffer, offset, length, "user id", NULL,0);
+	offset+=length;
+	length=4;//credentials 8,user 4, group 4
+	//long long group_id = output_param(buffer, offset, length, "group id", NULL,0);
+	//Dprintf(D_CALL,"group_id:%lli\n", group_id);
+	offset+=length;*/
+	offset+=12;
+	length=4;//hint_count 4
+	long long hint_count = output_param(buffer, offset, length, "hint count", NULL,0);
+	//Dprintf(D_CALL,"hint_count:%lli\n", hint_count);
+	int i=0;
+	for (i=0;i<hint_count;i++)
+	{
+		offset+=length;
+		length=4;//hint_count 4
+		long long hint_type = output_param(buffer, offset, length, "hint type", NULL,0);
+		fprintf(stderr,"  hint_type:%lli\n", hint_type);
+		switch (hint_type)
+		{
+		case PINT_HINT_HANDLE:
+			offset+=length;
+			length=8;//hint_length 8
+			long long hint_handle = output_param(buffer, offset, length, "hint handle", NULL,0);
+			fprintf(stderr,"  hint_handle:%lli\n", hint_handle);
+			break;
+		case PINT_HINT_UNKNOWN:
+		case PINT_HINT_REQUEST_ID:
+		case PINT_HINT_CLIENT_ID:
+
+		case PINT_HINT_OP_ID:
+		case PINT_HINT_RANK:
+		case PINT_HINT_SERVER_ID:
+		default:
+			//pvfs2/src/common/misc/pint-hint.c, line 36
+			offset+=length;
+			length=4;//hint_length 4
+			long long hint_other = output_param(buffer, offset, length, "hint other", NULL,0);
+			fprintf(stderr,"  hint_other:%lli\n", hint_other);
+			break;
+		//hint type 4
+		//hint depending on the hint type (if ==handle[3]), handle[8]
+		}
+	}
+
+	offset+=length;
+
+	struct meta * meta = (struct meta *)malloc(sizeof (struct meta));
+	memset(meta, 0, sizeof (struct meta));
+	switch (operation){
+	case PVFS_SERV_GETATTR:
+		length=8;
+		long long attr_handle = output_param(buffer, offset, length, "attr handle", NULL,0);
+		offset+=length;
+		length=4;
+		int attr_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
+		meta->handle=attr_handle;
+		offset+=length;
+		length=4;
+		int attr_mask = output_param(buffer, offset, length, "attr mask", NULL,0);
+		meta->mask = attr_mask;
+		break;
+		//handle[8]
+		//fs_id[4]
+		//attribute_mask[4]
+
+	case PVFS_SERV_READDIR:
+		//dir_handle[8]
+		//fs_id[4]
+		//dir_entry_count[4]
+		//ds_position[8]
+		//response: ds_position[8] dir_version[8], padding[4], dir_entry_count[4], dir_entry_array[8*] (name[8*], handle[8])
+	case PVFS_SERV_LISTATTR:
+		/*
+		fs_id[4]
+		Attribute_mask[4]
+		Padding[4]
+		handle_num[4]
+		handles[8*]
+
+		response:
+		padding[4]
+		object_num[4]
+		PVFS_errors[4*]
+		The error code array for all the target objects. If there is an error when querying the attribute, the error code is non-zero, otherwise it is zero.
+		Attributes[(48+)*]
+		 */
+	case PVFS_SERV_CREATE:
+		/*
+		 * fs_id[4]
+		Value
+			4-byte integer
+		Meaning
+			The file system ID of your PVFS2 system. Used to identify different PVFS2 systems.
+		padding[4]
+		Attribute[*]
+			For Details, see Appendix A.
+		num_dfiles_req[4]
+		Value
+			Integer
+		Meaning
+			Number of data file creation requests (one file may be distributed to multiple data files).
+		Layout[16+]
+		The layout structure specifies how the servers are chosen to layout the file. If the algorithm is chosen to be “PVFS_SYS_LAYOUT_LIST”, the server_list parameter is used to determine the layout.
+		See <pint-util.c> for more details.
+
+		Layout_algorithm[4]
+		Value
+		PVFS_SYS_LAYOUT_NONE = 1
+		PVFS_SYS_LAYOUT_ROUND_ROBIN = 2
+		PVFS_SYS_LAYOUT_RANDOM = 3
+		PVFS_SYS_LAYOUT_LIST = 4	// Only in this case, server list is not empty.
+		Meaning
+			The algorithm used for the distribution of the data file.
+		Padding[4]
+		Server_list_count[4]
+		Value
+			Integer
+		Meaning
+			The count of servers in the server list.
+		Padding[4]
+
+		If [Layout_algorithm == PVFS_SYS_LAYOUT_LIST = 4]:
+		PVFS_BMI_addr[8*]
+		Value
+			PVFS_string
+		Meaning
+
+		The servers' addresses expressed by string.
+
+		response:**********************************
+		Metafile_handle[8]
+		Value
+			8-byte integer
+		Meaning
+			The metafile handle for the created file.
+		padding[4]
+		datafile_count[4]
+		Value
+			integer
+		Meaning
+			The number of datafiles.
+		datafile_handles[8*]
+		Value
+			8-byte integers
+		Meaning
+		The array of datafile handles for the created file.
+		 */
+	case PVFS_SERV_STATFS:
+		//fs_id[4]
+		/*PVFS_statfs[88]
+		Padding[4]
+		fs_id[4]
+		bytes_available[8]
+		bytes_total[8]
+		ram_total_bytes[8]
+		ram_free_bytes[8]
+		Load_1[8]
+		Load_5[8]
+		Load_15[8]
+		uptime_seconds[8]
+		handles_available_count[8]
+		handles_total_count[8]
+		 	*/
+	case PVFS_SERV_CRDIRENT:
+		//name[8*]
+		//new_handle[8]
+		//parent_dir_handle[8]
+		//fs_id[4]
+
+	case PVFS_SERV_RMDIRENT:
+		//string_entry[8*]
+		//parent_dir_handle[8]
+		//fs_id[4]
+	case PVFS_SERV_LOOKUP_PATH:
+		//file_name[8*]
+		//fd_id[4]
+		//padding[4]
+		//parent_dir_handle[8]
+		//attribute_mask[4]
+		//response is more complicated
+	case PVFS_SERV_MKDIR:
+		//fs_id[4]
+		//padding[4]
+		//attribute[48+]
+		//handle_extent_array[8+16*]
+	case PVFS_SERV_GETCONFIG:
+		//resp: fs_config_buf_size[4] padding[4] fs_colnfig_buf[8*]
+		break;
+	//case PVFS_SERV_BATCH_CREATE:
+		/*
+		fs_id[4]
+		object_type[4]
+		Value <pvfs2-types.h>
+			enum:
+			NONE		0
+			METAFILE	1<<0
+			DATAFILE	1<<1
+			DIRECTORY	1<<2
+			SYMLINK	1<<3
+			DIRDATA	1<<4
+			INTERNAL	1<<5
+		Meaning
+			The type of the objects to be created.
+		obj_count[4]
+		Value
+			integer
+		Meaning
+			The amount of objects to be created.
+		Padding[4]
+		handle_extent_array[8+16*]
+		Please refer to PVFS_SERV_MKDIR (11) :: handle_extent_array.
+
+		response *******************
+
+		Padding[4]
+		obj_count[4]
+		handles[8*]
+		*/
+	//case PVFS_SERV_BATCH_REMOVE:
+	case PVFS_SERV_REMOVE:
+		//handle[8], fs_id[4]
+		length=8;
+		long long remove_handle = output_param(buffer, offset, length, "remove handle", NULL,0);
+		offset+=length;
+		length=4;
+		int remove_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
+		meta->handle = remove_handle;
+		meta->fsid = remove_fs_id;
+		break;
+
+	default:
+		fprintf(stderr, "Error, not supported operation in scheduler %i, %s\n", operation, ops[operation]);
+		exit(-1);
+		break;
+
+	}
+
+	return meta;
 
 }
 

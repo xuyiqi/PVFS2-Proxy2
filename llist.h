@@ -33,6 +33,7 @@ int list_dsfq_sort_comp(PINT_llist * a, PINT_llist * b);
 int list_vdsfq_sort_comp(PINT_llist * a, PINT_llist * b);
 int list_edf_sort_comp(PINT_llist * a, PINT_llist * b);
 int list_resp_sort_comp(PINT_llist * a, PINT_llist * b);
+int list_sfqd_sort_comp(PINT_llist * a, PINT_llist * b);
 
 int list_req_comp(void * a, void * b);
 PINT_llist_p PINT_llist_new(

@@ -15,6 +15,10 @@ extern int* completed_requests;
 extern char* log_prefix;
 long long total_throughput=0;
 extern int total_weight;
+
+int finished[2];
+int completerecv[2];
+int completefwd[2];
 int get_header(char * header, int eheader, int read_socket)
 {
 
@@ -39,19 +43,111 @@ peek_start:
 	}*/
 	if (ret < 0)
 	{
-		//failure to get header
-		perror(" socket error! ");
-		ret=-3;
+
 	}
 	else if (ret<eheader)
 	{
 		//didn't get header in a limit number of retries
-		fprintf(stderr," only got %i!!!\n",ret);
+		/*fprintf(stderr," only got %i!!! \n",ret);
+		int i=0;
+		for (i=0;i<ret;i++)
+		{
+			fprintf(stderr, "%x ", header[i]);
+		}
+		fprintf(stderr,"\n");*/
 		ret=-2;
 
 	}
 
 	return ret;
+}
+
+int is_IO(enum PVFS_server_op operation)
+{
+	return (operation == PVFS_SERV_IO || operation == PVFS_SERV_SMALL_IO || operation == PVFS_SERV_WRITE_COMPLETION);
+}
+
+int is_meta(enum PVFS_server_op operation)
+{
+
+#ifdef NEG_IFMETA
+						if (
+						operation != PVFS_SERV_INVALID /* 0 */
+						&& operation != PVFS_SERV_TRUNCATE /* 1 */
+						&& opeartion != PVFS_SERV_SETATTR /* 5 */
+						&& operation != PVFS_SERV_CHDIRENT /* 9 */
+						&& operation != PVFS_SERV_TRUNCATE /* 10 */
+						&& operation != PVFS_SERV_FLUSH /* 15 */
+						&& operation != PVFS_SERV_GETCONFIG /* 13 */
+						&& operation != PVFS_SERV_MGMT_SETPARAM /* 16 */
+						&& operation != PVFS_SERV_MGMT_NOOP /* 17 */
+						&& operation <  PVFS_SERV_PERF_UPDATE /* 19 */
+
+					    /*
+					    PVFS_SERV_MGMT_PERF_MON = 20,
+					    PVFS_SERV_MGMT_ITERATE_HANDLES = 21,
+					    PVFS_SERV_MGMT_DSPACE_INFO_LIST = 22,
+					    PVFS_SERV_MGMT_EVENT_MON = 23,
+					    PVFS_SERV_MGMT_REMOVE_OBJECT = 24,
+					    PVFS_SERV_MGMT_REMOVE_DIRENT = 25,
+					    PVFS_SERV_MGMT_GET_DIRDATA_HANDLE = 26,
+					    && operation >  PVFS_SERV_JOB_TIMER =  27, not a real protocol request
+					    && operation != PVFS_SERV_PROTO_ERROR 28
+					    && opeartion != PVFS_SERV_GETEATTR 29
+
+					    && operation != PVFS_SERV_SETEATTR 30
+					    && operation != PVFS_SERV_DELEATTR 31 */
+					    && operation > PVFS_SERV_LISTEATTR /* 32 */
+					    && opeartion != PVFS_SERV_BATCH_CREATE /* 35 */
+					    && operation != PVFS_SERV_BATCH_REMOVE /* 36 */
+					    && operation != PVFS_SERV_PRECREATE_POOL_REFILLER /* 37, not a real protocol request */
+					    && operation != PVFS_SERV_UNSTUFF /* 38 */
+					    && is_IO(operation) != 1
+					    )
+							return 1;
+						else
+							return 0;
+#else
+					    if (operation == PVFS_SERV_GETATTR ||
+					         operation == PVFS_SERV_REMOVE ||
+					         operation == PVFS_SERV_CREATE ||
+					         operation == PVFS_SERV_CRDIRENT ||
+					         operation == PVFS_SERV_RMDIRENT ||
+					         operation == PVFS_SERV_READDIR ||
+					         operation == PVFS_SERV_LISTATTR ||
+					         operation == PVFS_SERV_LOOKUP_PATH ||
+					         operation == PVFS_SERV_MKDIR ||
+					         operation == PVFS_SERV_STATFS
+					    )
+					    {
+					    	fprintf(stderr, "%s is meta\n", ops[operation]);
+
+					    	return 1;
+					    }
+					    else
+					    {
+					    	return 0;
+					    }
+#endif
+}
+
+void check_all_app_stat()
+{
+
+	int k;
+	for (k=0;k<num_apps;k++)
+	{
+		if (app_stats[k].app_exist<MESSAGE_START_THRESHOLD)
+		{
+			fprintf(stderr,"%s: Not counting, not all apps exist yet: app %i has only %i<%i items\n", log_prefix, k+1, app_stats[k].app_exist, MESSAGE_START_THRESHOLD);
+			break;
+		}
+	}
+	if (k>=num_apps)
+	{
+		first_receive=1;
+		gettimeofday(&first_count_time,0);
+	}
 }
 
 
@@ -99,6 +195,7 @@ int check_response(int index)//peeking
 		long long size=output_param(header, 16, 8 , "size",NULL,0);
 		s_pool.socket_state_list[index].job_size=size+24;
 		//fprintf(stderr,"malloc response of %lli bytes\n", size+24);
+		//fprintf(stderr,"malloc response of %lli bytes on socket %i \n", size+24,s_pool.socket_state_list[index].socket);
 		s_pool.socket_state_list[index].buffer=malloc((size+24)*sizeof(char));
 
 		//fprintf(stderr," address of new buffer from server:%i on %ith socket, %i\n", (int)s_pool.socket_state_list[index].buffer, index, s_pool.socket_state_list[index].socket);
@@ -144,7 +241,7 @@ int check_response(int index)//peeking
 			{
 
 				long long operation = output_param(header2, 32, 4, "pvfs_operation", ops,40);
-
+				fprintf(stderr,"RESPONSE OPERATION %s from %i\n", ops[operation], read_socket);
 				struct dist * dist;
 				if (operation==PVFS_SERV_IO ||
 						operation==PVFS_SERV_WRITE_COMPLETION || operation==PVFS_SERV_SMALL_IO)
@@ -152,15 +249,31 @@ int check_response(int index)//peeking
 					dist=	dump_header(header2,RESPONSE,s_pool.socket_state_list[index].ip);
 
 				}
+				else
+				{
+					switch (operation){
+					case PVFS_SERV_GETATTR:
+						//parse response length
+					case PVFS_SERV_READDIR://PVFS_server_op
+					case PVFS_SERV_LISTATTR:
+					case PVFS_SERV_LOOKUP_PATH:
+						fprintf(stderr, "%s incurring more cost on response\n", ops[operation]);
+						fprintf(stderr," cost is %i bytes\n", size);
+						break;
+					default:
+						fprintf(stderr,"%s has minimum cost on response\n", ops[operation]);
+						break;
+					}
+				}
 				if (operation==PVFS_SERV_GETCONFIG)
 				{
 					ret=0;
 					s_pool.socket_state_list[index].config_tag=1;
 
 					s_pool.socket_state_list[index].ready_to_receive=1;
+					fprintf(stderr,"GET_CONFIG received feedback\n");
 
 				}
-
 				else
 				{
 					//peek using only 24 bytes above
@@ -171,10 +284,11 @@ int check_response(int index)//peeking
 					s_pool.socket_state_list[index].config_tag=0;
 					ret=1;
 
-					if (operation==PVFS_SERV_IO)
+					if (operation==PVFS_SERV_IO) //scheduler check is in the branch body
 					{
 						//print_delay(s_pool.socket_state_list[index].counter_index, "IO RESPONSE");
 						//record_tag(s_pool.socket_state_list[index].ip, s_pool.socket_state_list[index].port, tag);//record a response of pvfs_serv_io for later flow data processing
+
 						s_pool.socket_state_list[index].last_tag=tag;
 
 						unsigned long long returned_size = output_param(header2, 36, 4, "IO request returned is ", NULL,0);
@@ -224,22 +338,7 @@ int check_response(int index)//peeking
 										app_stats[app_index].app_exist=app_stats[app_index].app_exist+1;
 
 										fprintf(stderr,"client %s completed++ for app %i\n",s_pool.socket_state_list[counter_index].ip, app_index+1);
-										int k;
-										for (k=0;k<num_apps;k++)
-										{
-												if (app_stats[k].app_exist<MESSAGE_START_THRESHOLD)
-												{
-														fprintf(stderr,"%s: ANot counting, not all apps exist yet: app %i has only %i<%i items\n", log_prefix, k+1, app_stats[k].app_exist, MESSAGE_START_THRESHOLD);
-														//fprintf(stderr,"Not counting, not all apps exist yet: app %i has only %i<%i items\n", k+1, app_exist[k], MESSAGE_START_THRESHOLD);
-
-														break;
-												}
-										}
-										if (k>=num_apps)
-										{
-												first_receive=1;
-												gettimeofday(&first_count_time,0);
-										}
+										check_all_app_stat();
 										//fprintf(stderr,"%i completion passed, not starting counter yet\n", passed_completions);
 									}
 
@@ -266,7 +365,7 @@ int check_response(int index)//peeking
 
 										s_pool.socket_state_list[new_item->socket_data->unlock_index].locked=0;
 									}
-									//////////////////////////////////////////////
+									//////////////////////////////PVFS_server_op////////////////
 								}
 
 							}
@@ -274,7 +373,8 @@ int check_response(int index)//peeking
 
 					}
 
-					if (scheduler_on && (operation==PVFS_SERV_WRITE_COMPLETION || operation==PVFS_SERV_SMALL_IO)
+					if (scheduler_on
+							&& (operation==PVFS_SERV_WRITE_COMPLETION || operation==PVFS_SERV_SMALL_IO)
 							&& static_methods[scheduler_index]->sch_self_dispatch==0)
 					{
 						//print_delay(s_pool.socket_state_list[index].counter_index, "WRITE COMPLETION");
@@ -290,6 +390,9 @@ int check_response(int index)//peeking
 					    int write_resp_time = get_response_time(counter_index, tv, PVFS_IO_WRITE);
 					    //update to apphistory
 					    int app_index = s_pool.socket_state_list[counter_index].app_index;
+					    finished[app_index]--;
+					    completerecv[app_index]++;
+					    s_pool.socket_state_list[index].op= PVFS_SERV_WRITE_COMPLETION;
 					    update_history(app_index, counter_index, 0, ret, write_resp_time, PVFS_IO_WRITE);
 						/*cost*/
 						//write completion is the indication of server write completion
@@ -301,20 +404,8 @@ int check_response(int index)//peeking
 						{
 							passed_completions++;
 							app_stats[app_index].app_exist=app_stats[app_index].app_exist+1;
-							int k;
-							for (k=0;k<num_apps;k++)
-							{
-								if (app_stats[k].app_exist<MESSAGE_START_THRESHOLD)
-								{
-									fprintf(stderr,"%s: Not counting, not all apps exist yet: app %i has only %i<%i items\n", log_prefix, k+1, app_stats[k].app_exist, MESSAGE_START_THRESHOLD);
-									break;
-								}
-							}
-							if (k>=num_apps)
-							{
-								first_receive=1;
-								gettimeofday(&first_count_time,0);
-							}
+							check_all_app_stat();
+
 							//fprintf(stderr,"%i completion passed, not starting counter yet\n", passed_completions);
 						}
 
@@ -360,6 +451,7 @@ int check_response(int index)//peeking
 
 						r.last_app_index=app_index;
 						r.item=s_pool.socket_state_list[counter_index].current_item;
+						fprintf(stderr,"dispatching because of write completion\n");
 						struct generic_queue_item* new_item = (*(static_methods[scheduler_index]->sch_dequeue))(r);
 						if (new_item==NULL)
 						{
@@ -373,6 +465,62 @@ int check_response(int index)//peeking
 
 							s_pool.socket_state_list[new_item->socket_data->unlock_index].locked=0;
 						}
+					}
+					else if (scheduler_on && (operation==PVFS_SERV_SMALL_IO)
+
+							)//self dispatch == 1
+						/* write_completion triggers the self_dispatch = 1's inside scheduling mechanism*/
+					{
+						//this is for two-level schedulers
+
+						int counter_index=s_pool.socket_state_list[index].counter_index;
+						struct generic_queue_item* current_item= s_pool.socket_state_list[counter_index].current_item;
+						struct complete_message cmsg;
+						cmsg.complete_size=-1;
+                        cmsg.current_item=current_item;
+						int ret = (*(static_methods[scheduler_index]->sch_update_on_request_completion))((void*)&cmsg);
+
+					}
+					if (scheduler_on &&	is_meta(operation)
+							&&  static_methods[scheduler_index]->sch_self_dispatch==0)
+						/*this last branch processes the responses of meta data operation
+						 * -eager mode
+						 * -response message comes with header and is part of the response.
+						 * so we just dispatch upon receipt of a response from meta data
+						 * */
+					{
+						//like getting a write completion, you should also operate on the queue and dispatch the next
+						fprintf(stderr, "hola, I've completed my meta! %i %s, dispatch?\n", operation, ops[operation]);
+						//this is supposed to work like it received a write_completion response from the server.
+						//assuming that the scheduling is work-conserving and proxy-dispatching, the next item
+						//will have to be extracted and dispatched
+						int counter_index=s_pool.socket_state_list[index].counter_index;
+						struct generic_queue_item* current_item= s_pool.socket_state_list[counter_index].current_item;
+						struct complete_message cmsg;
+						cmsg.complete_size=-1;
+						//all scheduler's complete_size condition should include -1 case where it should be directly skipped
+                        cmsg.current_item=current_item;
+						int ret = (*(static_methods[scheduler_index]->sch_update_on_request_completion))((void*)&cmsg);
+						//right now, for meta-data operations, this is only recognized and implemented in sfqd_full scheduler
+						//the next one to recognize this is dsfq_full
+						struct dequeue_reason r;
+						//nothing's in it yet
+						struct generic_queue_item* new_item = (*(static_methods[scheduler_index]->sch_dequeue))(r);
+						if (new_item==NULL)
+						{
+						}
+						else
+						{
+
+                    	    struct timeval tv;
+                    	    gettimeofday(&tv, 0);
+                        	update_release_time(new_item->socket_data->unlock_index, tv);
+							s_pool.socket_state_list[new_item->socket_data->unlock_index].locked=0;
+						}
+					}
+					else if (scheduler_on && !is_meta(operation) && !is_IO(operation))
+					{
+						fprintf(stderr, "seeing a non-io, non-meta op : %s, nothing is done on the socket\n", ops[operation]);
 					}
 					s_pool.socket_state_list[index].ready_to_receive=1;
 				}
@@ -392,13 +540,14 @@ int check_request(int index)
 	int eheader=24;
 	unsigned char header[eheader];
 	int read_socket=s_pool.poll_list[index].fd;
-
+	//fprintf(stderr,"checking from socket %i\n", read_socket);
 	int ret = get_header(header, eheader, read_socket);
+
 	if (ret!=eheader)
 	{
-		fprintf(stderr,"Error getting bmi header for request. Expected: %i, got:%i\n",eheader, ret);
-		perror("req error");
-		ret=-1;
+		//fprintf(stderr,"Error getting bmi header for request. Expected: %i, got:%i\n",eheader, ret);
+		//perror("req error");
+
 	}
 	else
 	{
@@ -417,6 +566,7 @@ int check_request(int index)
 
 		long long size=output_param(header, 16, 8 , "size",NULL,0);
 		s_pool.socket_state_list[index].job_size=size+24;
+		//fprintf (stderr,"socket %i ttl size %i\n",read_socket, size+24);
 		int counter_index=s_pool.socket_state_list[index].counter_index;
 
 
@@ -469,7 +619,7 @@ int check_request(int index)
 			if(ret !=eheader)
 			{
 				fprintf(stderr, "Error getting header of pvfs for request. Expected: %i, got:%i\n",eheader, ret);
-				ret=-1;
+				ret=-3;
 			}
 
 			else
@@ -480,8 +630,7 @@ int check_request(int index)
 				//Dprintf(D_CACHE,"RAW: %lli,%lli,test1:%i,test2:%i\n",mnr,operation,mnr==0xcabf,operation==PVFS_SERV_GETCONFIG );
 				//mnr==0xcabf &&
 				s_pool.socket_state_list[index].op=operation;
-				//fprintf(stderr,"REQUEST OPERATION %s\n", ops[operation]);
-
+				//fprintf(stderr,"%s REQUEST OPERATION %s from socket %i tag %i\n", log_prefix, ops[operation], read_socket, tag);
 				//fprintf(stderr,"operation is %lli\n",operation);
 				//fprintf(stderr,"dumping contents from %s...%s, %s:%i, tag %i\n",directions[s_pool.socket_state_list[index].source],
 				//		ops[operation], s_pool.socket_state_list[index].ip,s_pool.socket_state_list[index].port,tag );
@@ -499,12 +648,23 @@ int check_request(int index)
 					io_type=get_io_type(header2,eheader,small);
 					s_pool.socket_state_list[counter_index].pvfs_io_type=io_type;
 
+
+					//////////////temporary to get idea of request////////////////////
+					struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
+					//Dprintf(D_CACHE,"io request size is %i\n",eheader);
+
+					int this_size=logical_to_physical_size_dparam(dist);
+					//fprintf(stderr,"socket %i - this size:%i agg size:%i\n", read_socket, this_size, dist->aggregate_size);
+					/////////////////////////////////////////////
+
+
+
 					if (scheduler_on && (io_type==PVFS_IO_WRITE || small==1))/*@do we need to differentiate read and write?@*/
 					{							/*@
 					 * we can combine these two branches if we don't
 					 *
 					 * @*/
-
+						//fprintf(stderr,"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n");
 						if (s_pool.socket_state_list[index].has_block_item==1)
 						{
 
@@ -538,6 +698,7 @@ int check_request(int index)
 
 							pi->tag=tag;
 							pi->io_type=io_type;
+							pi->op = operation;
 							pi->req_size=size;
 							pi->req_offset=dist->data_file_offset;
 							pi->aggregate_size=dist->aggregate_size;
@@ -552,8 +713,10 @@ int check_request(int index)
 
 							update_receipt_time(index,tv, io_type);
 
-							if ((*(static_methods[scheduler_index]->sch_enqueue))(si, pi)
-									&& static_methods[scheduler_index]->sch_self_dispatch==0)
+							if (
+									(*(static_methods[scheduler_index]->sch_enqueue))(si, pi)
+									&&static_methods[scheduler_index]->sch_self_dispatch==0
+							)
 							{
 								//Dprintf(D_CACHE, "[dispatched immediately] %i\n",s_pool.socket_state_list[index].weight);
 								//Dprintf(D_CACHE,"[CLOCK] virtual time is updated to %i\n",virtual_time);
@@ -573,21 +736,8 @@ int check_request(int index)
 							}
 							else if (static_methods[scheduler_index]->sch_self_dispatch==0)
 							{
-								//fprintf(stderr, "[[[[[[[[[[[[[[[[[[[[service delayed]]]]]]]]]]]]]]]]]]]]\n");
-	//								Dprintf(D_CACHE, "current item is %s:%i, tag %i\n",
-	//									current_item->data_ip, current_item->data_port, current_item->socket_tag);
-								//if (pthread_mutex_lock (&counter_mutex)!=0)
-								{
-									//Dprintf(D_CACHE, "error locking when getting counter\n");
-								}
-
-
 								s_pool.socket_state_list[index].locked=1;
 								s_pool.socket_state_list[index].has_block_item=1;
-								//if (pthread_mutex_unlock (&counter_mutex)!=0)
-								{
-								//	Dprintf(D_CACHE, "error locking when getting counter\n");
-								}
 							}
 						}
 
@@ -595,6 +745,7 @@ int check_request(int index)
 					else if (scheduler_on && io_type==PVFS_IO_READ )
 
 					{
+						//fprintf(stderr,"RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR\n");
 						if (s_pool.socket_state_list[index].has_block_item==1)
 						{
 
@@ -617,17 +768,8 @@ int check_request(int index)
 
 							//fprintf(stderr,"READ size estimated to %i!\n",this_size);
 
-
-							/*@
-							 * we have a request for read
-							 *
-							 * @*/
-
-
 							int counter_index=s_pool.socket_state_list[index].counter_index;
 
-
-							//if (add_request(index, counter_index,this_size ,tag, io_type, NULL, size))
 							struct socket_info * si = (struct socket_info *)malloc(sizeof(struct socket_info));
 							struct pvfs_info * pi = (struct pvfs_info *)malloc(sizeof(struct pvfs_info));
 							memset(si, 0, sizeof(struct socket_info));
@@ -646,6 +788,7 @@ int check_request(int index)
 
 							pi->tag=tag;
 							pi->req_offset=dist->data_file_offset;
+							pi->op=operation;
 							pi->io_type=io_type;
 							pi->req_size=size;
 							pi->aggregate_size=dist->aggregate_size;
@@ -657,8 +800,8 @@ int check_request(int index)
 							si->request_socket=index;
 							si->app_index=s_pool.socket_state_list[index].app_index;
 
-							if ((*(static_methods[scheduler_index]->sch_enqueue))(si, pi))
-
+							if ((*(static_methods[scheduler_index]->sch_enqueue))(si, pi)
+								&& static_methods[scheduler_index]->sch_self_dispatch==0)
 
 							{
 								//fprintf(stderr, "[dispatched immediately] %i\n",s_pool.socket_state_list[index].weight);
@@ -677,7 +820,7 @@ int check_request(int index)
 
 
 							}
-							else
+							else if (static_methods[scheduler_index]->sch_self_dispatch==0)
 							{
 								//fprintf(stderr, "[service delayed] %i\n",s_pool.socket_state_list[index].weight);
 								s_pool.socket_state_list[index].locked=1;
@@ -685,32 +828,87 @@ int check_request(int index)
 								//fprintf(stderr,"READ IO is blocked on %i\n",index);
 							}
 						}
+					}//end read
+				}//end io/smallio
+				else if (scheduler_on == 1 && static_methods[scheduler_index]->sch_accept_meta == 1
+						&& is_meta(operation) == 1
+				)
+					//meta data and getconfig stuff
+
+				{
+					fprintf(stderr,"%s REQUEST OPERATION %s from socket %i (ip %s) tag %i\n", log_prefix, ops[operation], read_socket, s_pool.socket_state_list[index].ip, tag);
+					//now we interact with the queue, and get feedback from the scheduler by checking
+					//if it supports meta-operation (sch_accept_meta)
+					if (s_pool.socket_state_list[index].has_block_item==1)
+					{
+
+						s_pool.socket_state_list[index].has_block_item=0;
+						//prevent the poll from adding to queue twice.
+						//this time the unblocked socket is performing I/O whatever
+						//fprintf(stderr, "previously blocked request, passing\n");
 					}
+					else
+					{
+						//print_delay(index, "IO REQUEST");
+						struct meta* meta = dump_meta_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
 
+						//get handle
 
+						struct socket_info * si = (struct socket_info *)malloc(sizeof(struct socket_info));
+						struct pvfs_info * pi = (struct pvfs_info *)malloc(sizeof(struct pvfs_info));
+						memset(si, 0, sizeof(struct socket_info));
+						memset(pi, 0, sizeof(struct pvfs_info));
+
+						pi->tag = tag;
+						pi->op = operation;
+						pi->req_size = size;
+						pi->handle = meta->handle;
+						pi->fsid = meta->fsid;
+						pi->mask = meta->mask;
+
+						si->app_index = s_pool.socket_state_list[index].app_index;
+						si->request_socket = index;
+						struct timeval tv;
+                  	    gettimeofday(&tv, 0);
+						//update_receipt_time(index,tv, 0);
+
+						if (
+								(*(static_methods[scheduler_index]->sch_enqueue))(si, pi)
+								&&static_methods[scheduler_index]->sch_self_dispatch==0
+						)
+						{
+
+							struct dequeue_reason r;
+							r.complete_size = size;//just a place holder
+							r.event = NEW_META;
+							r.last_app_index = si->app_index;
+							s_pool.socket_state_list[index].current_item =
+									(*(static_methods[scheduler_index]->sch_dequeue))(r);//get_next_request();
+							//struct timeval tv;
+	                  	    gettimeofday(&tv, 0);
+	                       	update_release_time(index, tv);
+
+						}
+						else if (static_methods[scheduler_index]->sch_self_dispatch==0)
+						{
+							s_pool.socket_state_list[index].locked=1;
+							s_pool.socket_state_list[index].has_block_item=1;
+						}
+					}
 				}
+				else //we still need to protect from mgmt set param message failures,
+					//because the meta data service might not be able to recognize it
+				{
+					//guard against those that we don't understand....
+					fprintf(stderr, "Unscheduled operation %s\n", ops[operation]);
+				}
+
 				s_pool.socket_state_list[index].config_tag=0;
 				ret=1;
-
-/*
-				if (size+24>out_buffer_size-s_pool.buffer_sizes[index])
-				{
-					s_pool.socket_state_list[index].ready_to_receive=0;
-					//Dprintf(L_NOTICE, "NOT ready to receive yet\n");
-				}
-				else
-				{
-					s_pool.socket_state_list[index].ready_to_receive=1;
-					//Dprintf(L_NOTICE, "READY to receive\n");
-				}
- * 
-*/
-               s_pool.socket_state_list[index].ready_to_receive=1;
-			}
-		}
-
-
-	}
+                s_pool.socket_state_list[index].ready_to_receive=1;
+			}//end pvfs header right
+		}//end flow or other
+	}//end bmi header right
 	return ret;
- }
+}
 

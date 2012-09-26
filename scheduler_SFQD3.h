@@ -11,7 +11,7 @@
 #include "scheduler_main.h"
 #define SFQD3_SCHEDULER "SFQD3"
 #define __STATIC_SCHEDULER_SFQD3__ 1
-
+/* local SFQD who does throttling (non-work-conserving) */
 extern char** app_names;
 extern int sfqd3_depth;
 extern int sfqd3_purecost;

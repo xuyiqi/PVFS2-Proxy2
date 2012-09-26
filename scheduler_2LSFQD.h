@@ -9,7 +9,7 @@
 #define SCHEDULER_2LSFQD_H_
 #include "heap.h"
 #include "scheduler_main.h"
-#define TWOLSFQD_SCHEDULER "2LSFQD"
+#define TWOLSFQD_SCHEDULER "TWOLSFQD"
 #define __STATIC_SCHEDULER_2LSFQD__ 1
 
 extern char** app_names;
@@ -54,6 +54,8 @@ struct twolsfqd_queue_item
 	int missed;
 	int miss_start_timewindow;
 	int miss_end_timewindow;
+	int timewindow;
+	int deadline_same_timewindow;
 };
 
 
