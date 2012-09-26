@@ -1,0 +1,154 @@
+
+
+#Functions
+function usage {
+	echo "server-rc { all / start_servers / kill_servers / remove_storage / create_storage / restart_server}"
+	echo "		all :			stop, remove, create, start "
+	echo "		reboot : 		reboot all Servers"
+	echo "		start_servers : 	start pvfs2-server daemon on all Servers"
+	echo "		kill_servers : 		stop pvfs2-server daemon on all Servers"
+	echo "		remove_storage : 	remove pvfs2 storage on all Servers"
+	echo "		create_storage : 	create pvfs2 storage on all Servers"
+	echo "		restart_servers : 	restart pvfs2-server daemon on all Servers"
+}
+
+function removeLog {
+        command=" rm /data/yiqi/pvfs_log"
+
+        commandServer "$command"
+
+        command=" rm /data/yiqi2/pvfs_log"
+
+        commandServer "$command"
+
+
+}
+function cleanServer {
+	killserver
+	sleep 3
+	removeStorage
+	sleep 3
+	createStorage
+	sleep 3
+	startserver
+}
+function rebootServer {
+	echo "Rebooting Servers:"
+	command=" reboot"
+
+	commandServer "$command"
+}
+function killserver {
+	echo "Killing PVFS2-SERVER:"
+	command=" killall -w pvfs2-server"
+
+	commandServer "$command"
+}
+
+function startserver {
+	echo "Initializing PVFS2-SERVER:"
+	command=" $pvfs/pvfs2-server $config"
+
+	commandServer "$command"
+        command=" cat /data/yiqi/pvfs_log"
+
+        commandServer "$command"
+
+        command=" cat /data/yiqi2/pvfs_log"
+
+        commandServer "$command"
+
+
+} 
+
+function removeStorage {
+	echo "Removing Storage space:"
+        command=" rm -rf /data/yiqi/*"
+        commandServer "$command"
+        command=" rm -rf /data/yiqi2/*"
+        commandServer "$command"
+
+
+	command=" $pvfs/pvfs2-server $config -r"
+
+	commandServer "$command"
+	command=" rm -rf /data/yiqi/*"
+	commandServer "$command"
+        command=" rm -rf /data/yiqi2/*"
+        commandServer "$command"
+
+
+}
+
+function createStorage {
+	echo "Creating Storage..."
+	command=" $pvfs/pvfs2-server $config -f"
+	
+	commandServer "$command"
+}
+function restartserver {
+	echo "Restarting PVFS2-SERVER:"
+
+	killserver
+	startserver
+}
+
+function commandServer {
+
+        echo "ALL-SERVER:"
+        for element in $(seq 0 $((${#data_servers[@]} - 1)))
+        do
+                echo -n "${data_servers[element]}: " 
+                echo "$1"
+                ssh ${data_servers[element]} "$1"
+        done
+
+#       echo "META-SERVER:"
+#       for element in $(seq 0 $((${#meta_servers[@]} - 1)))
+#       do
+#               echo -n "${meta_servers[element]}: " 
+#               echo "$1"
+#               ssh ${meta_servers[element]} "$1"
+#       done
+
+
+}
+pvfs=$2
+config=$3
+
+case $1 in
+	all)
+		removeLog
+		cleanServer
+		;;
+	reboot)
+		removeLog
+		rebootServer
+		;;
+	start_servers)
+		removeLog
+		startserver
+		;;
+	kill_servers) 
+		removeLog
+		killserver
+		;;
+	remove_storage) 
+		removeLog
+		removeStorage
+		;;
+	create_storage)
+		removeLog
+		createStorage
+		;;
+	restart_server)
+		removeLog
+		restartserver
+		;;
+	*)
+		usage
+		;;
+esac
+
+
+exit 0

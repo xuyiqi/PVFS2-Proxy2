@@ -1,0 +1,43 @@
+<Defaults>
+	UnexpectedRequests 500
+	EventLogging none
+	EnableTracing no
+	LogStamp datetime
+	BMIModules bmi_tcp
+	FlowModules flowproto_multiqueue
+	PerfUpdateInterval 1000
+	ServerJobBMITimeoutSecs 300
+	ServerJobFlowTimeoutSecs 300
+	ClientJobBMITimeoutSecs 3000
+	ClientJobFlowTimeoutSecs 3000
+	ClientRetryLimit 5
+	ClientRetryDelayMilliSecs 2000
+	PrecreateBatchSize 512
+	PrecreateLowThreshold 256
+
+	StorageSpace /data/yiqi
+	LogFile /data/yiqi/pvfs_log
+</Defaults>
+
+<Aliases>
+	Alias c2n7 tcp://c2n7:3334
+	Alias c2n8 tcp://c2n8:3334
+</Aliases>
+
+<Filesystem>
+	Name pvfs2-fs
+	ID 627188580
+	RootHandle 1048576
+	FileStuffing no
+	<MetaHandleRanges>
+		Range c2n8 3-4611686018427387904
+	</MetaHandleRanges>
+	<DataHandleRanges>
+		Range c2n7 4611686018427387905-9223372036854775806
+	</DataHandleRanges>
+	<StorageHints>
+		TroveSyncMeta yes
+		TroveSyncData no
+		TroveMethod alt-aio
+	</StorageHints>
+</Filesystem>

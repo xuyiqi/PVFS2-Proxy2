@@ -1,11 +1,11 @@
 PVFS2(Parallel Virtual File System) Proxy
 ==============================
 
-Version 0.5.0 by
+Version 0.8.0 by
   Yiqi Xu, Ming Zhao
   VISA Lab / School of Computing and Information Sciences
   Florida International University
-  Dec 2010
+  Dec 2012
 
 
 Contents
@@ -32,6 +32,19 @@ Requirements
 
 Changes
 ====================
+* Changes from v0.8
+  Implemented Full Meta data support (no scheduling yet), tested over multi-md-test.c
+* Changes from v0.7
+  Implemented Two-level(SARC-AVATAR) scheduling
+* Changes from v0.6
+  Eliminated double buffering
+  Implemnted dynamic memory allocation
+* Changes from v0.5
+  Implemented double buffering
+  Implemented non-work-conserving schedulers
+  Implemented Virtual-DSFQ
+  Fixed read / write size calculation when receiving a request not explicitly stating how much it will give the server
+  Added support for SMALL_IO
 * Changes from v0.4
   Added support for algorithm paramter sections in the config file
   Implemented SFQD(READ)
