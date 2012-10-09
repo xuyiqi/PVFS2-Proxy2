@@ -117,6 +117,7 @@ int sfqdfull_init()
 	for (i=0;i<num_apps;i++)
 	{
 		sfqdfull_list_queue_count[i]=0;
+		//last_finish_tags[i]=0; do not forget!
 	}
 	char* deptht=(char*)malloc(sizeof(char)*40);
 	snprintf(deptht, 40, "%s.depthtrack.txt", log_prefix);

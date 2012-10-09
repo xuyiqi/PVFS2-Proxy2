@@ -241,7 +241,7 @@ int check_response(int index)//peeking
 			{
 
 				long long operation = output_param(header2, 32, 4, "pvfs_operation", ops,40);
-				fprintf(stderr,"RESPONSE OPERATION %s from %i\n", ops[operation], read_socket);
+				//fprintf(stderr,"RESPONSE OPERATION %s from %i\n", ops[operation], read_socket);
 				struct dist * dist;
 				if (operation==PVFS_SERV_IO ||
 						operation==PVFS_SERV_WRITE_COMPLETION || operation==PVFS_SERV_SMALL_IO)

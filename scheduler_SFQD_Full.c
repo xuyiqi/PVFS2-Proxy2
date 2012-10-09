@@ -117,6 +117,7 @@ int sfqdfull_init()
 	for (i=0;i<num_apps;i++)
 	{
 		sfqdfull_list_queue_count[i]=0;
+		sfqdfull_last_finish_tags[i]=0;
 	}
 	char* deptht=(char*)malloc(sizeof(char)*40);
 	snprintf(deptht, 40, "%s.depthtrack.txt", log_prefix);
@@ -283,13 +284,22 @@ int sfqdfull_current_size(int sock_index, long long actual_data_file_size)
 
 }
 
-int sfqdfull_get_finish_tag(int length, int weight, int start_tag)
+#define DEFAULT_META_COST 10240 //IN BYTES
+
+int sfqdfull_get_finish_tag(int length, int weight, int start_tag,enum PVFS_server_op op)
 {
 	int cost, finish_tag;
 	if (cost_model==COST_MODEL_NONE)
 	{
 		//reducer=REDUCER;
 		cost=length;
+		if (op!=PVFS_SERV_IO && op!=PVFS_SERV_SMALL_IO)
+		{
+			cost = DEFAULT_META_COST;
+		}
+
+		fprintf(stderr,"cost is %i\n", cost);
+
 		if (weight*REDUCER>cost)
 		{
 			finish_tag = start_tag+1;
@@ -361,8 +371,7 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 
 	int cost;
 	int reducer, finish_tag;
-	finish_tag = start_tag+1;
-			//get_finish_tag(length, weight,start_tag);
+	finish_tag = sfqdfull_get_finish_tag(length, weight,start_tag, pi->op);
 	sfqdfull_last_finish_tags[app_index]=finish_tag;
 
 	struct generic_queue_item * generic_item =  (struct generic_queue_item * )malloc(sizeof(struct generic_queue_item));
@@ -414,7 +423,9 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 
 	generic_item->socket_data=si;
 
-	fprintf(stderr,"%s %s enqueuing tag %i app%i\n", bptr, log_prefix, item->socket_tag, item->app_index);
+	fprintf(stderr,"%s %s enqueuing tag %i app%i, start %i end %i\n",
+			bptr, log_prefix, item->socket_tag, item->app_index,
+			start_tag, finish_tag);
 
 
 	int dispatched=0;
@@ -454,7 +465,8 @@ int sfqdfull_update_on_request_completion(void* arg)
 		//this is a skip flag for response messages
 		//there is no in-fly task, any response should be followed by a complete message
 		//although you might argue that you could receive multiple times before a complete listdir is received
-		finished[sfqdfull_item->app_index]++;
+		//finished[sfqdfull_item->app_index]++;
+		app_stats[sfqdfull_item->app_index].completed_requests+=1;
 		return 0;
 
 	}
@@ -468,7 +480,8 @@ int sfqdfull_update_on_request_completion(void* arg)
 		get_time_diff(&(sfqdfull_item->dispatchtime), &diff);
 		fprintf(depthtrack, "response time of class %i: %i ms\n", sfqdfull_item->app_index, (int)(diff.tv_sec*1000+diff.tv_usec/1000));
 		average_resp_time[sfqdfull_item->app_index]+=(diff.tv_sec*1000+diff.tv_usec/1000);
-		finished[sfqdfull_item->app_index]++;
+		//finished[sfqdfull_item->app_index]++;
+		app_stats[sfqdfull_item->app_index].completed_requests+=1;
 		return sfqdfull_item->got_size;
 	}
 	else if (sfqdfull_item->task_size < sfqdfull_item->got_size)
@@ -535,11 +548,11 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 	//fprintf(stderr,"%s %s, finished %i complete recv %i, completefwd %i\n",	bptr, log_prefix, finished[0], completerecv[0], completefwd[0]);
 	if (SFQD_FULL_USE_HEAP_QUEUE==0)
 	{
-		/*if (sfqdfull_sorted==0)
+		if (sfqdfull_sorted==0)
 		{
 			sfqdfull_llist_queue = PINT_llist_sort(sfqdfull_llist_queue,list_sfqd_sort_comp);
 			sfqdfull_sorted=1;
-		}*/
+		}
 
 		int i;
 		fprintf(stderr,"%s %s ",bptr,log_prefix);
@@ -575,7 +588,8 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 		//current_node = hn;
 		sfqdfull_virtual_time=next_queue_item->start_tag;
 
-		fprintf(depthtrack,"%s %s dispatching tag %i app%i on %s\n", bptr, log_prefix, next_queue_item->socket_tag, next_queue_item->app_index,
+		fprintf(depthtrack,"%s %s dispatching tag %i app%i on %s\n", bptr, log_prefix,
+				next_queue_item->socket_tag, next_queue_item->app_index,
 				s_pool.socket_state_list[next_queue_item->request_socket_index].ip);
 
 		int i;

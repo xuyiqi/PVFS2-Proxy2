@@ -462,6 +462,10 @@ void dump_stat(int sig)
 		{
 			fprintf(stat_file, "%s: DSFQ:%i\n", log_prefix,dsfq_depth);
 		}
+		if (!strcmp(static_methods[scheduler_index]->method_name, SFQD_FULL_SCHEDULER))
+		{
+			fprintf(stat_file, "%s: FULL_SFQD:%i\n", log_prefix,sfqdfull_depth);
+		}
 	}
 
 

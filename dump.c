@@ -12,7 +12,106 @@
 #include <string.h>
 #include <stdio.h>
 extern char* log_prefix;
+
+/* internal attribute masks, common to all obj types */
+#define PVFS_ATTR_COMMON_UID   (1 << 0)
+#define PVFS_ATTR_COMMON_GID   (1 << 1)
+#define PVFS_ATTR_COMMON_PERM  (1 << 2)
+#define PVFS_ATTR_COMMON_ATIME (1 << 3)
+#define PVFS_ATTR_COMMON_CTIME (1 << 4)
+#define PVFS_ATTR_COMMON_MTIME (1 << 5)
+#define PVFS_ATTR_COMMON_TYPE  (1 << 6)
+#define PVFS_ATTR_COMMON_ATIME_SET (1 << 7)
+#define PVFS_ATTR_COMMON_MTIME_SET (1 << 8)
+#define PVFS_ATTR_COMMON_ALL                       \
+(PVFS_ATTR_COMMON_UID   | PVFS_ATTR_COMMON_GID   | \
+ PVFS_ATTR_COMMON_PERM  | PVFS_ATTR_COMMON_ATIME | \
+ PVFS_ATTR_COMMON_CTIME | PVFS_ATTR_COMMON_MTIME | \
+ PVFS_ATTR_COMMON_TYPE)
+
+/* internal attribute masks for metadata objects */
+#define PVFS_ATTR_META_DIST    (1 << 10)
+#define PVFS_ATTR_META_DFILES  (1 << 11)
+#define PVFS_ATTR_META_ALL \
+(PVFS_ATTR_META_DIST | PVFS_ATTR_META_DFILES)
+
+#define PVFS_ATTR_META_UNSTUFFED (1 << 12)
+
+/* internal attribute masks for datafile objects */
+#define PVFS_ATTR_DATA_SIZE            (1 << 15)
+#define PVFS_ATTR_DATA_ALL   PVFS_ATTR_DATA_SIZE
+
+/* internal attribute masks for symlink objects */
+#define PVFS_ATTR_SYMLNK_TARGET            (1 << 18)
+#define PVFS_ATTR_SYMLNK_ALL PVFS_ATTR_SYMLNK_TARGET
+
+/* internal attribute masks for directory objects */
+#define PVFS_ATTR_DIR_DIRENT_COUNT         (1 << 19)
+#define PVFS_ATTR_DIR_HINT                  (1 << 20)
+#define PVFS_ATTR_DIR_ALL \
+(PVFS_ATTR_DIR_DIRENT_COUNT | PVFS_ATTR_DIR_HINT)
+
+/* attributes that do not change once set */
+#define PVFS_STATIC_ATTR_MASK \
+(PVFS_ATTR_COMMON_TYPE|PVFS_ATTR_META_DIST|PVFS_ATTR_META_DFILES|PVFS_ATTR_META_UNSTUFFED)
+
 //each function makes sure the headers are dumped in one call only
+
+typedef enum
+{
+    PVFS_TYPE_NONE =              0,
+    PVFS_TYPE_METAFILE =    (1 << 0),
+    PVFS_TYPE_DATAFILE =    (1 << 1),
+    PVFS_TYPE_DIRECTORY =   (1 << 2),
+    PVFS_TYPE_SYMLINK =     (1 << 3),
+    PVFS_TYPE_DIRDATA =     (1 << 4),
+    PVFS_TYPE_INTERNAL =    (1 << 5)   /* for the server's private use */
+} PVFS_ds_type;
+
+enum PVFS_sys_layout_algorithm
+{
+    /* order the datafiles according to the server list */
+    PVFS_SYS_LAYOUT_NONE = 1,
+
+    /* choose the first datafile randomly, and then round-robin in-order */
+    PVFS_SYS_LAYOUT_ROUND_ROBIN = 2,
+
+    /* choose each datafile randomly */
+    PVFS_SYS_LAYOUT_RANDOM = 3,
+
+    /* order the datafiles based on the list specified */
+    PVFS_SYS_LAYOUT_LIST = 4
+};
+#define PVFS_SYS_LAYOUT_DEFAULT NULL
+
+/* permission bits */
+#define PVFS_O_EXECUTE (1 << 0)
+#define PVFS_O_WRITE   (1 << 1)
+#define PVFS_O_READ    (1 << 2)
+#define PVFS_G_EXECUTE (1 << 3)
+#define PVFS_G_WRITE   (1 << 4)
+#define PVFS_G_READ    (1 << 5)
+#define PVFS_U_EXECUTE (1 << 6)
+#define PVFS_U_WRITE   (1 << 7)
+#define PVFS_U_READ    (1 << 8)
+/* no PVFS_U_VTX (sticky bit) */
+#define PVFS_G_SGID    (1 << 10)
+#define PVFS_U_SUID    (1 << 11)
+
+/* valid permission mask */
+#define PVFS_PERM_VALID \
+(PVFS_O_EXECUTE | PVFS_O_WRITE | PVFS_O_READ | PVFS_G_EXECUTE | \
+ PVFS_G_WRITE | PVFS_G_READ | PVFS_U_EXECUTE | PVFS_U_WRITE | \
+ PVFS_U_READ | PVFS_G_SGID | PVFS_U_SUID)
+
+#define PVFS_USER_ALL  (PVFS_U_EXECUTE|PVFS_U_WRITE|PVFS_U_READ)
+#define PVFS_GROUP_ALL (PVFS_G_EXECUTE|PVFS_G_WRITE|PVFS_G_READ)
+#define PVFS_OTHER_ALL (PVFS_O_EXECUTE|PVFS_O_WRITE|PVFS_O_READ)
+
+#define PVFS_ALL_EXECUTE (PVFS_U_EXECUTE|PVFS_G_EXECUTE|PVFS_O_EXECUTE)
+#define PVFS_ALL_WRITE   (PVFS_U_WRITE|PVFS_G_WRITE|PVFS_O_WRITE)
+#define PVFS_ALL_READ    (PVFS_U_READ|PVFS_G_READ|PVFS_O_READ)
+
 
 void dump_IO(char* buffer, int size)//data flow
 {
@@ -378,6 +477,166 @@ int dump_header2(char* buffer,int small)
 	return dump_IO_Request2(buffer, offset,small);//hints, distribution, etc
 
 }
+
+void dump_string(char* buffer, int *offset)
+{
+	int length=4;
+	int s_size = output_param(buffer, *offset, length, "string size", NULL, 0);
+	*offset+=length;
+	char* temp_string = (char*)malloc(s_size+1);
+	temp_string[s_size]=0;
+	memcpy(temp_string, buffer+*offset, s_size);
+	//fprintf(stderr,"STRING LENGTH IS %i:\n'%s'\n",s_size, temp_string);
+	*offset+=s_size;
+	int left_over = (length + s_size) % 8;
+	int padding = 0;
+	if ( left_over > 0)
+	{ padding = 8 - left_over;}
+	//fprintf(stderr,"PADDING is %i bytes long\n", padding);
+	*offset+=padding;
+
+}
+struct attr_plus
+{
+	int create_ds_type;
+	int attr_mask;
+};
+
+struct attr_plus dump_attribute(char* buffer, int* offset)
+{
+	int length;
+	length=4;
+	int create_uid = output_param(buffer, *offset, length, "create uid", NULL,0);
+	*offset+=length;
+	//fprintf(stderr,"create uid: %i\n", create_uid);
+	length=4;
+	int create_gid = output_param(buffer, *offset, length, "create gid", NULL,0);
+	*offset+=length;
+	//fprintf(stderr,"create gid: %i\n", create_gid);
+	length=4;
+	int create_permissions = output_param(buffer, *offset, length, "create permissions", NULL,0);
+	*offset+=(length+4);//padding
+	//fprintf(stderr,"create permissions: %i\n", create_permissions);
+	length=8;
+	long long create_atime = output_param(buffer, *offset, length, "create atime", NULL,0);
+	*offset+=length;
+	length=8;
+	long long create_mtime = output_param(buffer, *offset, length, "create mtime", NULL,0);
+	*offset+=length;
+	length=8;
+	long long create_ctime = output_param(buffer, *offset, length, "create ctime", NULL,0);
+	*offset+=length;
+	//fprintf(stderr,"create atime, mtime, ctime: %lli, %lli, %lli\n",
+		//	create_atime, create_mtime, create_ctime);
+
+	length=4;
+	int create_attr_mask = output_param(buffer, *offset, length, "create attr mask", NULL,0);
+	*offset+=length;
+	fprintf(stderr,"create attr mask: %X\n", create_attr_mask);
+
+	length=4;
+	int create_ds_type = output_param(buffer, *offset, length, "create ds type", NULL,0);
+	*offset+=length;
+
+	fprintf(stderr,"create ds type: %i\n", create_ds_type);
+	struct attr_plus ret;
+	ret.create_ds_type=create_ds_type;
+	ret.attr_mask=create_attr_mask;
+	return ret;
+}
+
+void dump_attribute_plus(char* buffer, int* offset, struct attr_plus plus)
+{
+
+	int length;
+	int create_ds_type = plus.create_ds_type;
+	int create_attr_mask = plus.attr_mask;
+	fprintf(stderr,"! %X & %X == %X \n", create_attr_mask, PVFS_ATTR_META_UNSTUFFED, !(create_attr_mask & PVFS_ATTR_META_UNSTUFFED));
+	fprintf(stderr,"create_ds_type = %i\n", create_ds_type);
+	/*
+	//additional attributes depends on the following conditions:*/
+	if ( create_ds_type == PVFS_TYPE_METAFILE && ! (create_attr_mask & PVFS_ATTR_META_UNSTUFFED))
+	{
+		length=4;
+		int create_stuffed_size = output_param(buffer, *offset, length, "stuffed size", NULL,0);
+		*offset+=(length+4);//padding
+		fprintf(stderr,"stuffed size is %lli\n", create_stuffed_size);
+	}
+	if ( create_attr_mask & PVFS_ATTR_META_DIST)
+	{
+		fprintf(stderr,"dumping meta_dist string\n");
+		dump_string(buffer, offset);
+		length=8;
+
+		long long create_stripe_size = output_param(buffer, *offset, length, "stripe size", NULL,0);
+		fprintf(stderr,"stripe size %lli\n", create_stripe_size);
+		*offset+=length;
+	}
+	if ( create_attr_mask & PVFS_ATTR_META_DFILES )
+	{
+		length=4;
+		int create_dfile_count = output_param(buffer, *offset, length, "dfile count", NULL,0);
+		*offset+=(length+4);//padding
+		fprintf(stderr,"create dfile count is %i \n", create_dfile_count);
+		int j;
+		for (j=0; j< create_dfile_count; j++)
+		{
+			length=8;
+			long long create_handle = output_param(buffer, *offset, length, "handle", NULL,0);
+			fprintf(stderr, "handle %lli\n", create_handle);
+			*offset+=length;
+		}
+		length=8;
+		long long create_hint = output_param(buffer, *offset, length, "hint", NULL,0);
+		*offset+=length;
+		fprintf(stderr,"create hint %lli\n", create_hint);
+	}
+	if ( create_attr_mask & PVFS_ATTR_DATA_SIZE)
+	{
+		length=8;
+		long long create_data_size = output_param(buffer, *offset, length, "data size", NULL,0);
+		*offset+=length;
+		fprintf(stderr,"create data size %lli\n", create_data_size);
+
+	}
+	if ( create_attr_mask & PVFS_ATTR_SYMLNK_TARGET)
+	{
+		length=4;
+		long long create_path_length = output_param(buffer, *offset, length, "path length", NULL,0);
+		*offset+=(length+4);//padding
+		fprintf(stderr,"path length %lli\n", create_path_length);
+		fprintf(stderr,"dumping symlink string\n");
+		dump_string(buffer, offset);
+
+	}
+	if ( create_attr_mask &
+			(PVFS_ATTR_DIR_DIRENT_COUNT |   PVFS_ATTR_DIR_HINT) )
+	{
+		length=8;
+		long long create_dirent_count = output_param(buffer, *offset, length, "dirent count", NULL,0);
+		*offset+=length;
+		fprintf(stderr,"dirent_count %lli\n", create_dirent_count);
+		length=4;
+		int create_dist_name_len = output_param(buffer, *offset, length, "dist name len", NULL,0);
+		*offset+=(length+4);//padding
+		fprintf(stderr,"name len %lli\n", create_dist_name_len);
+		fprintf(stderr,"dumping dirent string1\n");
+		dump_string(buffer, offset);
+		length=4;
+		int create_dist_param_len = output_param(buffer, *offset, length, "dist param len", NULL,0);
+		*offset+=(length+4);//padding
+		fprintf(stderr,"dumping dirent string2\n");
+		dump_string(buffer, offset);
+		length=4;
+		int create_dfile_count = output_param(buffer, *offset, length, "data file count", NULL,0);
+		*offset+=length;
+
+	}
+
+
+
+}
+
 struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 {
 	//Dprintf(D_CALL,"=======source:%s======\n", source );
@@ -435,21 +694,21 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 	offset+=12;
 	length=4;//hint_count 4
 	long long hint_count = output_param(buffer, offset, length, "hint count", NULL,0);
-	//Dprintf(D_CALL,"hint_count:%lli\n", hint_count);
+	fprintf(stderr,"meta hint_count:%lli\n", hint_count);
 	int i=0;
 	for (i=0;i<hint_count;i++)
 	{
 		offset+=length;
-		length=4;//hint_count 4
+		length=4;//hint_type 4
 		long long hint_type = output_param(buffer, offset, length, "hint type", NULL,0);
-		fprintf(stderr,"  hint_type:%lli\n", hint_type);
+		fprintf(stderr,"meta hint_type:%lli\n", hint_type);
 		switch (hint_type)
 		{
 		case PINT_HINT_HANDLE:
 			offset+=length;
 			length=8;//hint_length 8
 			long long hint_handle = output_param(buffer, offset, length, "hint handle", NULL,0);
-			fprintf(stderr,"  hint_handle:%lli\n", hint_handle);
+			fprintf(stderr,"meta hint_handle:%lli\n", hint_handle);
 			break;
 		case PINT_HINT_UNKNOWN:
 		case PINT_HINT_REQUEST_ID:
@@ -463,7 +722,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 			offset+=length;
 			length=4;//hint_length 4
 			long long hint_other = output_param(buffer, offset, length, "hint other", NULL,0);
-			fprintf(stderr,"  hint_other:%lli\n", hint_other);
+			fprintf(stderr,"meta hint_other:%lli\n", hint_other);
 			break;
 		//hint type 4
 		//hint depending on the hint type (if ==handle[3]), handle[8]
@@ -486,18 +745,59 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		length=4;
 		int attr_mask = output_param(buffer, offset, length, "attr mask", NULL,0);
 		meta->mask = attr_mask;
+		//fprintf(stderr, "HANDLE %#08llX, FS ID %#08lX, MASK %#08lX\n", attr_handle, attr_fs_id, attr_mask);
 		break;
 		//handle[8]
 		//fs_id[4]
 		//attribute_mask[4]
 
 	case PVFS_SERV_READDIR:
+		length=8;
+		long long dir_handle = output_param(buffer, offset, length, "dir handle", NULL,0);
+		offset+=length;
+		length=4;
+		int dir_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
+		offset+=length;
+		length=4;
+		int dir_entry_count = output_param(buffer, offset, length, "dir entry count", NULL,0);
+		offset+=length;
+		length=8;
+		int ds_position = output_param(buffer, offset, length, "ds position", NULL,0);
+		//fprintf(stderr, "HANDLE %#08llX, FS ID %#08lX, ENTRY COUNT %#08lX, DS POSITION %#08lX\n",
+			//	dir_handle, dir_fs_id, dir_entry_count, ds_position);
+
 		//dir_handle[8]
 		//fs_id[4]
 		//dir_entry_count[4]
 		//ds_position[8]
 		//response: ds_position[8] dir_version[8], padding[4], dir_entry_count[4], dir_entry_array[8*] (name[8*], handle[8])
+		break;
 	case PVFS_SERV_LISTATTR:
+		length=4;
+		long long listattr_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
+		offset+=length;
+		length=4;
+		int listattr_attr_mask = output_param(buffer, offset, length, "attribute mask", NULL,0);
+		offset+=length;
+		offset+=4;//padding
+		length=4;
+		int listattr_handle_num = output_param(buffer, offset, length, "handle num", NULL,0);
+		offset+=length;
+		//fprintf(stderr, "FS ID %#08lX, ATTR MASK %#08lX, # HANDLES %i\n",
+			//	listattr_fs_id, listattr_attr_mask, listattr_handle_num);
+
+		int i;
+		//fprintf(stderr,"HANDLES:");
+		for (i =0; i< listattr_handle_num; i++)
+		{
+			length=8;
+			int handle = output_param(buffer, offset, length, "handle", NULL,0);
+			//fprintf(stderr, "%#08llX ", handle);
+			offset+=length;
+		}
+		//fprintf(stderr,"\n");
+
+
 		/*
 		fs_id[4]
 		Attribute_mask[4]
@@ -512,49 +812,37 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		The error code array for all the target objects. If there is an error when querying the attribute, the error code is non-zero, otherwise it is zero.
 		Attributes[(48+)*]
 		 */
+		break;
 	case PVFS_SERV_CREATE:
-		/*
-		 * fs_id[4]
-		Value
-			4-byte integer
-		Meaning
-			The file system ID of your PVFS2 system. Used to identify different PVFS2 systems.
-		padding[4]
-		Attribute[*]
-			For Details, see Appendix A.
-		num_dfiles_req[4]
-		Value
-			Integer
-		Meaning
-			Number of data file creation requests (one file may be distributed to multiple data files).
-		Layout[16+]
-		The layout structure specifies how the servers are chosen to layout the file. If the algorithm is chosen to be “PVFS_SYS_LAYOUT_LIST”, the server_list parameter is used to determine the layout.
-		See <pint-util.c> for more details.
 
-		Layout_algorithm[4]
-		Value
-		PVFS_SYS_LAYOUT_NONE = 1
-		PVFS_SYS_LAYOUT_ROUND_ROBIN = 2
-		PVFS_SYS_LAYOUT_RANDOM = 3
-		PVFS_SYS_LAYOUT_LIST = 4	// Only in this case, server list is not empty.
-		Meaning
-			The algorithm used for the distribution of the data file.
-		Padding[4]
-		Server_list_count[4]
-		Value
-			Integer
-		Meaning
-			The count of servers in the server list.
-		Padding[4]
+		length=4;
+		int create_fs_id = output_param(buffer, offset, length, "create fs id", NULL,0);
+		offset+=(length+4);//padding
 
-		If [Layout_algorithm == PVFS_SYS_LAYOUT_LIST = 4]:
-		PVFS_BMI_addr[8*]
-		Value
-			PVFS_string
-		Meaning
+		//fprintf(stderr,"fs id: %i\n",create_fs_id);
+		//attributes
 
-		The servers' addresses expressed by string.
+		struct attr_plus ap = dump_attribute(buffer, &offset);
+		dump_attribute_plus(buffer, &offset, ap);
+		length=4;
+		int create_num_dfiles_req = output_param(buffer, offset, length, "num dfiles req", NULL,0);
+		offset+=length;
+		fprintf(stderr,"ndfiles req %i\n", create_num_dfiles_req);
+		length=4;
+		int create_layout_algo = output_param(buffer, offset, length, "layout algo", NULL,0);
+		offset+=(length+4);
+		fprintf(stderr,"layout algo %i\n", create_layout_algo);
+		length=4;
+		int create_server_list_count = output_param(buffer, offset, length, "server list", NULL,0);
+		offset+=(length+4);
+		fprintf(stderr,"server list count %i\n", create_server_list_count);
+		if (create_layout_algo == PVFS_SYS_LAYOUT_LIST)
+		{
+			fprintf(stderr, "dumping layout string\n");
+			dump_string(buffer, &offset);
+		}
 
+/*
 		response:**********************************
 		Metafile_handle[8]
 		Value
@@ -573,9 +861,15 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		Meaning
 		The array of datafile handles for the created file.
 		 */
+		break;
 	case PVFS_SERV_STATFS:
+		length=4;
+		int statfs_fs_id = output_param(buffer, offset, length, "statfs fs id", NULL,0);
+		offset+=(length+4);//padding
+
 		//fs_id[4]
-		/*PVFS_statfs[88]
+
+		/* response: PVFS_statfs[88]
 		Padding[4]
 		fs_id[4]
 		bytes_available[8]
@@ -589,28 +883,99 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		handles_available_count[8]
 		handles_total_count[8]
 		 	*/
+		break;
 	case PVFS_SERV_CRDIRENT:
+		dump_string(buffer, &offset);
+		length=8;
+
+		long long new_handle = output_param(buffer, offset, length, "new handle", NULL,0);
+		offset+=length;
+		length=8;
+		long long crd_parent_dir_handle = output_param(buffer, offset, length, "parent_dir_handle", NULL,0);
+		offset+=length;
+		length=4;
+		int crd_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
+
+		//fprintf(stderr, "NEW HANDLE %#08lX, PARENT DIR HANDLE %#08lX, FS ID %#08lX\n",
+		//		new_handle, crd_parent_dir_handle, crd_fs_id);
 		//name[8*]
 		//new_handle[8]
 		//parent_dir_handle[8]
 		//fs_id[4]
-
+		break;
 	case PVFS_SERV_RMDIRENT:
+		dump_string(buffer, &offset);
+		length=8;
+		long long rmd_parent_dir_handle = output_param(buffer, offset, length, "parent_dir_handle", NULL,0);
+		offset+=length;
+		length=4;
+		int rmd_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
+
+		//fprintf(stderr, "PARENT DIR HANDLE %#08lX, FS ID %#08lX\n",
+		//		rmd_parent_dir_handle, rmd_fs_id);
 		//string_entry[8*]
 		//parent_dir_handle[8]
 		//fs_id[4]
+		break;
 	case PVFS_SERV_LOOKUP_PATH:
+		//fprintf(stderr,"dumping lookup path string\n");
+		dump_string(buffer, &offset);
+		length=4;
+		int lookup_fs_id = output_param(buffer,
+				offset, length, "lookup fs id", NULL,0);
+		offset+=(length+4);
+		length=8;
+		long long lookup_parent_dir_handle = output_param(buffer,
+				offset, length, "lookup parent dir handle", NULL,0);
+		offset+=length;
+		length=4;
+		int lookup_attr_mask = output_param(buffer,
+				offset, length, "look up attr mask", NULL,0);
 		//file_name[8*]
 		//fd_id[4]
 		//padding[4]
 		//parent_dir_handle[8]
 		//attribute_mask[4]
+
 		//response is more complicated
+		break;
 	case PVFS_SERV_MKDIR:
+		length=4;
+		int mkdir_fs_id = output_param(buffer,
+				offset, length, "mkdir fs id", NULL,0);
+		fprintf(stderr, "mkdir fs id %i\n", mkdir_fs_id);
+		offset+=(length+4);//padding
+		struct attr_plus p = dump_attribute(buffer,&offset);
+		dump_attribute_plus(buffer, &offset, p);
+
+		offset+=4;//padding
+		length=4;
+		int mkdir_extent_count = output_param(buffer,
+				offset, length, "mkdir extent count", NULL,0);
+		offset+=length;
+		fprintf(stderr,"mkdir extent count %i\n",mkdir_extent_count);
+		/*int k;
+		for (k=0;k<mkdir_extent_count;k++)
+		{
+			length=8;
+			long long mkdir_start = output_param(buffer,
+					offset, length, "mkdir extent start", NULL,0);
+			//fprintf(stderr,"mkdir extent start %lli, ",mkdir_start);
+			offset+=length;
+			length=8;
+			long long mkdir_end = output_param(buffer,
+					offset, length, "mkdir extent end", NULL,0);
+			offset+=length;
+			//fprintf(stderr, "end %lli\n", mkdir_end);
+		}*/
+
 		//fs_id[4]
 		//padding[4]
 		//attribute[48+]
+		//call a function
 		//handle_extent_array[8+16*]
+
+		break;
 	case PVFS_SERV_GETCONFIG:
 		//resp: fs_config_buf_size[4] padding[4] fs_colnfig_buf[8*]
 		break;
@@ -654,6 +1019,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		int remove_fs_id = output_param(buffer, offset, length, "fs id", NULL,0);
 		meta->handle = remove_handle;
 		meta->fsid = remove_fs_id;
+		//fprintf(stderr, "HANDLE %#08llX, FS ID %#08lX\n", remove_handle, remove_fs_id);
 		break;
 
 	default:
