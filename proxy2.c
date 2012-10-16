@@ -357,7 +357,7 @@ int main(int argc, char **argv)
         if (num_poll>0)
         {
         	int i;
-            //Dprintf(D_CALL,"%i detected\n", num_poll);
+            fprintf(stderr,"%i detected\n", num_poll);
             for (i=0;i<s_pool.pool_size;i++)//iterate through the whole socket pool for returned events
             {
                 if (process==num_poll)
@@ -485,8 +485,8 @@ int main(int argc, char **argv)
 								fprintf(stderr,"removing %i\n",i);
 								remove_socket_by_index(i);
 
-								close(s_pool.socket_state_list[s_pool.pool_size-1].socket);
-								fprintf(stderr,"removing %i\n",s_pool.socket_state_list[s_pool.pool_size-1].socket);
+								close(s_pool.socket_state_list[i+1].socket);
+								fprintf(stderr,"removing %i\n",i+1);
 								remove_socket_by_index(i+1);
 
 								if (s_pool.pool_size>1)//not the last two deleted
@@ -500,8 +500,9 @@ int main(int argc, char **argv)
 								}
 
 								i--;
+								fprintf(stderr,"sockets removed:\n");
 								continue;
-								//p_log(log_file,"sockets removed:%i,%i\n",read_socket,csocket);
+
 
 							}
 							else if (got_size == -1 && (errno==EINTR ||errno==EAGAIN))

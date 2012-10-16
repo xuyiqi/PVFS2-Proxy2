@@ -1,7 +1,7 @@
 PVFS2(Parallel Virtual File System) Proxy
 ==============================
 
-Version 0.8.0 by
+Version 1.0.0 by
   Yiqi Xu, Ming Zhao
   VISA Lab / School of Computing and Information Sciences
   Florida International University
@@ -18,7 +18,6 @@ Contents
 * Logging
 * Support
 
-
 Introduction
 ==============
 
@@ -32,6 +31,10 @@ Requirements
 
 Changes
 ====================
+* Changes from v1.0 (to be completed)
+  WRF, iozone support (and many others such as metarates)
+* Changes from v0.9
+  Implemented VFS support, i.e. concurrency on single socket. Removed MPI-IO dependency (1:1 mapping between processes and sockets). Virtually this can support any kinds of benchmarks which goes through VFS on a mount point.
 * Changes from v0.8
   Implemented Full Meta data support (no scheduling yet), tested over multi-md-test.c
 * Changes from v0.7
@@ -172,3 +175,4 @@ Support
   Web site: http://groups.google.com/group/hecura-vpfs
   SVN: https://visa.cis.fiu.edu/svn/hecura/pvfs-proxy 
   Email: zhaom@cis.fiu.edu, yxu006@cis.fiu.edu 
+

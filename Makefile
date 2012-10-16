@@ -1,7 +1,7 @@
 CC =		gcc
 CFLAGS =	-g -O0
 LDFLAGS =	-lpthread -lm
-OBJSR = performance.o dictionary.o iniparser.o cost_model_history.o sockio.o scheduler_main.o scheduler_SFQD.o logging.o dump.o llist.o proxy2.o utility.o heap.o signals.o message.o config.o socket_pool.o options.o scheduler_DSFQ.o scheduler_vDSFQ.o scheduler_SFQD2.o scheduler_SFQD3.o scheduler_vDSFQ2.o scheduler_2LSFQD.o scheduler_SFQD_Full.o
+OBJSR = performance.o dictionary.o iniparser.o cost_model_history.o sockio.o scheduler_main.o scheduler_SFQD.o logging.o dump.o llist.o proxy2.o utility.o heap.o signals.o socket_pool.o message.o config.o  options.o scheduler_DSFQ.o scheduler_vDSFQ.o scheduler_SFQD2.o scheduler_SFQD3.o scheduler_vDSFQ2.o scheduler_2LSFQD.o scheduler_SFQD_Full.o
 
 all:	proxy2
 
