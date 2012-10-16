@@ -294,123 +294,63 @@ int logical_to_physical_size_param (int current_server,
 
 }
 
-int logical_to_physical_size_dparam (struct dist* dparam
-                                               )
+int logical_to_physical_size_dparam (struct dist* dparam)
 {
-
-	/*	int current_server_number;
-	int total_server_number;
-	unsigned long long aggregate_size;
-	int this_server_size;
-	int stripe_size;
-	unsigned long long data_file_offset;
-	char* dist_name;
-	int small_total;
-	 * */
 	int strip_size=dparam->stripe_size;
 	int server_nr = dparam->current_server_number;
 	int server_count= dparam->total_server_number;
-
 	long long offset=dparam->data_file_offset;
-	//update expected receivables for current item!
 	long long ask_size= dparam->aggregate_size;
 
-	//if (ask_size+offset> actual_data_file_size)
-	{
+	int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr);
+    return my_shared_size;
+}
 
-		//ask_size=actual_data_file_size-offset;
-	}
-
-	//fprintf(stderr,"strip size:%i, server nr: %i, server count:%i offset:%lli, ask size:%lli\n",
-	//strip_size, server_nr, server_count, offset, ask_size );
-
-	int whole_strip_size=strip_size*server_count;
-
-
-	int offset_nr_whole_strip=offset/whole_strip_size;
-	int left_over_first=offset % whole_strip_size;
-	int left_over_second;
-
-
-
-	if (left_over_first>0)
-	{
-		left_over_second= whole_strip_size - left_over_first;
-	}
-	else
-	{
-		left_over_second=0;
-	}
-
-	//fprintf(stderr,"whole strip:%i, offset strips:%i, leftover left:%i, leftover right:%i\n",
-	//whole_strip_size, offset_nr_whole_strip, left_over_first, left_over_second
-	//);
-
-	int data_nr_whole_strip= (ask_size-left_over_second)/whole_strip_size;
-	int left_over_third=(ask_size-left_over_second) % whole_strip_size;
-
-	int left_over_current_top=0;
-	int left_over_current_bottom=0;
-
-	//fprintf(stderr,"data_nr_whole_strip:%i, left_over_third:%i\n", data_nr_whole_strip, left_over_third);
-
-    if(left_over_third >= server_nr*strip_size)
-    {
+int get_my_share(int strip_size, int server_count, long long  offset, long long  ask_size, int server_nr)
+{
+    int whole_strip_size = strip_size * server_count;
+    int offset_nr_whole_strip = offset / whole_strip_size;
+    int left_over_first = offset % whole_strip_size;
+    int left_over_second;
+    if(left_over_first > 0){
+        left_over_second = whole_strip_size - left_over_first;
+    }else{
+        left_over_second = 0;
+    }
+    //fprintf(stderr,"whole strip:%i, offset strips:%i, leftover left:%i, leftover right:%i\n",
+    //whole_strip_size, offset_nr_whole_strip, left_over_first, left_over_second
+    //);
+    int data_nr_whole_strip = (ask_size - left_over_second) / whole_strip_size;
+    int left_over_third = (ask_size - left_over_second) % whole_strip_size;
+    int left_over_current_top = 0;
+    int left_over_current_bottom = 0;
+    //fprintf(stderr,"data_nr_whole_strip:%i, left_over_third:%i\n", data_nr_whole_strip, left_over_third);
+    if(left_over_third >= server_nr * strip_size){
         /* if so, tack that on to the physical offset as well */
         if(left_over_third < (server_nr + 1) * strip_size)
             left_over_current_bottom += left_over_third - (server_nr * strip_size);
+
         else
             left_over_current_bottom += strip_size;
+
     }
     //fprintf(stderr,"left over bottom1:%i\n", left_over_current_bottom);
-
-    if(left_over_first>0 && left_over_first >= server_nr*strip_size)
-    {
+    if(left_over_first > 0 && left_over_first >= server_nr * strip_size){
         /* if so, tack that on to the physical offset as well */
         if(left_over_first < (server_nr + 1) * strip_size)
             left_over_current_bottom -= left_over_first - (server_nr * strip_size);
+
         else
             left_over_current_bottom -= strip_size;
+
     }
     //fprintf(stderr,"left over bottom2:%i\n",left_over_current_bottom);
-
-    int all_shared_size = data_nr_whole_strip*strip_size;
-    if (left_over_first>0)
-    {
-    	all_shared_size+=strip_size;
+    int all_shared_size = data_nr_whole_strip * strip_size;
+    if(left_over_first > 0){
+        all_shared_size += strip_size;
     }
-
-    int my_shared_size=all_shared_size+left_over_current_bottom;
-    //fprintf(stderr,"current item adjusted to %i\n",my_shared_size);
-
-
+    int my_shared_size = all_shared_size + left_over_current_bottom;
     return my_shared_size;
-}
-int logical_to_physical_size_old (struct dist* dparam
-                                               )
-{
-    int ret_offset = 0;
-    int full_stripes = 0;
-    int leftover = 0;
-
-    int server_nr = dparam->current_server_number;
-    int server_ct = dparam->total_server_number;
-
-    /* how many complete stripes are in there? */
-    full_stripes = dparam->aggregate_size / (dparam->stripe_size*server_ct);
-    ret_offset += full_stripes * dparam->stripe_size;
-
-    /* do the leftovers fall within our region? */
-    leftover = dparam->aggregate_size - full_stripes * dparam->stripe_size * server_ct;
-    if(leftover >= server_nr*dparam->stripe_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(leftover < (server_nr + 1) * dparam->stripe_size)
-            ret_offset += leftover - (server_nr * dparam->stripe_size);
-        else
-            ret_offset += dparam->stripe_size;
-    }
-    return(ret_offset);
 }
 
 void dump_stat(int sig)

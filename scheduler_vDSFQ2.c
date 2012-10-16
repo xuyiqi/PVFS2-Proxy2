@@ -388,23 +388,6 @@ struct generic_queue_item * vdsfq2_dequeue(struct dequeue_reason r)
 		struct vdsfq2_queue_item * vdsfq2_item = (struct vdsfq2_queue_item *)(next_item->embedded_queue_item);
 		vdsfq2_virtual_time=vdsfq2_item->start_tag;
 
-		int i;
-		for (i=0;i<s_pool.pool_size;i++)
-		{
-			if (s_pool.socket_state_list[i].socket==vdsfq2_item->request_socket)
-			{
-				//Dprintf(D_CACHE, "[NEXT]socket from %s:%i is being unlocked\n",
-				//		s_pool.socket_state_list[i].ip,s_pool.socket_state_list[i].port);
-
-				next_item->socket_data->unlock_index=i;
-				s_pool.socket_state_list[i].current_item=next_item;
-				//s_pool.socket_state_list[i].locked=0;
-				//Dprintf(D_CACHE, "adding Original socket was %i\n",dsfq_item->request_socket);
-				break;
-			}
-		}
-		//fprintf(stderr, "releasing start_tag %i finish_tag:%i, weight:%i, app: %i, %s, queue length is %i\n", dsfq_item->start_tag, dsfq_item->finish_tag,
-		//		dsfq_item->weight, dsfq_item->app_index+1,s_pool.socket_state_list[i].ip, dsfq_queue_size-1);
 
 		vdsfq2_stats[vdsfq2_item->app_index].vdsfq_app_dispatch++;
 /*		for (i=0;i<dsfq_num_apps;i++)
@@ -414,7 +397,7 @@ struct generic_queue_item * vdsfq2_dequeue(struct dequeue_reason r)
 		fprintf(stderr,"\n");*/
 
 		vdsfq2_queue_size--;
-		int app_index=s_pool.socket_state_list[i].app_index;
+		int app_index=next_item->socket_data->app_index;
 		app_stats[app_index].dispatched_requests+=1;
 	}
 	else
@@ -1006,12 +989,6 @@ int vdsfq2_update_on_request_completion(void* arg)
 
 	vdsfq2_item->got_size+=complete->complete_size;
 
-
-/*
-	Dprintf(D_CACHE,"adding [Current Item %s:%i]:%i/%i\n",
-			dsfq_item->data_ip, dsfq_item->data_port,
-			dsfq_item->got_size,dsfq_item->task_size);
-*/
 
 
 	if (vdsfq2_item->got_size==vdsfq2_item->task_size)

@@ -298,10 +298,10 @@ int twolsfqd_add_item(struct heap* heap, struct generic_queue_item* item)
 }
 
 
-int twolsfqd_current_size(int sock_index, long long actual_data_file_size)
+int twolsfqd_current_size(struct request_state * original_rs, long long actual_data_file_size)
 {
 
-	struct generic_queue_item * current_item = s_pool.socket_state_list[sock_index].current_item;
+	struct generic_queue_item * current_item = original_rs->current_item;
 	struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item * )(current_item->embedded_queue_item);
 
 	twolsfqd_item->data_file_size=actual_data_file_size;
@@ -314,63 +314,7 @@ int twolsfqd_current_size(int sock_index, long long actual_data_file_size)
 	//update expected receivables for current item!
 	long long ask_size = twolsfqd_item->aggregate_size;
 
-
-	int whole_strip_size=strip_size*server_count;
-
-
-	int offset_nr_whole_strip=offset/whole_strip_size;
-	int left_over_first=offset % whole_strip_size;
-	int left_over_second;
-
-	if (left_over_first>0)
-	{
-		left_over_second= whole_strip_size - left_over_first;
-	}
-	else
-	{
-		left_over_second=0;
-	}
-
-	//fprintf(stderr,"whole strip:%i, offset strips:%i, leftover left:%i, leftover right:%i\n",
-	//whole_strip_size, offset_nr_whole_strip, left_over_first, left_over_second
-	//);
-
-	int data_nr_whole_strip= (ask_size-left_over_second)/whole_strip_size;
-	int left_over_third=(ask_size-left_over_second) % whole_strip_size;
-
-	int left_over_current_top=0;
-	int left_over_current_bottom=0;
-
-	//fprintf(stderr,"data_nr_whole_strip:%i, left_over_third:%i\n", data_nr_whole_strip, left_over_third);
-
-    if(left_over_third >= server_nr*strip_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(left_over_third < (server_nr + 1) * strip_size)
-            left_over_current_bottom += left_over_third - (server_nr * strip_size);
-        else
-            left_over_current_bottom += strip_size;
-    }
-    //fprintf(stderr,"left over bottom1:%i\n", left_over_current_bottom);
-
-    if(left_over_first>0 && left_over_first >= server_nr*strip_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(left_over_first < (server_nr + 1) * strip_size)
-            left_over_current_bottom -= left_over_first - (server_nr * strip_size);
-        else
-            left_over_current_bottom -= strip_size;
-    }
-    //fprintf(stderr,"left over bottom2:%i\n",left_over_current_bottom);
-
-    int all_shared_size = data_nr_whole_strip*strip_size;
-    if (left_over_first>0)
-    {
-    	all_shared_size+=strip_size;
-    }
-
-    int my_shared_size=all_shared_size+left_over_current_bottom;
-    //fprintf(stderr,"current item adjusted to %i\n",my_shared_size);
+    int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr);
     twolsfqd_item->task_size=my_shared_size;
 
 
@@ -379,9 +323,9 @@ int twolsfqd_current_size(int sock_index, long long actual_data_file_size)
 }
 
 //this is a hooked function, useful for moving current_size function to a single point of accountability/shared function
-void twolsfqd_adjust_task_size(long long actual_data_file_size, int task_size, int sock_index)
+void twolsfqd_adjust_task_size(long long actual_data_file_size, int task_size, struct request_state * rs)
 {
-	struct generic_queue_item * current_item = s_pool.socket_state_list[sock_index].current_item;
+	struct generic_queue_item * current_item = rs->current_item;
 	struct sfqd_queue_item * sfqd_item = (struct sfqd_queue_item * )(current_item->embedded_queue_item);
 
 	sfqd_item->data_file_size=actual_data_file_size;
@@ -485,7 +429,6 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	period_cumulative_request_count[app_index]+=1;
 	app_stats[app_index].app_nr=item->server_count;
 
-
 	fprintf (stderr,"new request on socket %i!!!!!!!!!!!!!!!!!!!!1\n", r_socket_index);
 	pthread_mutex_lock(&twolsfqd_sfqd_queue_mutex);
 
@@ -496,8 +439,7 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	//re-write this function to add item to its own list, or, expand it here
 	PINT_llist_add_to_tail(sarc_credit_list[app_index], generic_item);
 
-
-	s_pool.socket_state_list[r_socket_index].current_item= generic_item;
+	si->rs->current_item = generic_item;
 
 	int dispatched=0;
 
@@ -510,9 +452,7 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 		fprintf(stderr,"enqueue\n");
 		if (twolsfqd_dequeue_all(generic_item)<=0)
 		{
-			//fprintf(stderr,"2LSFQD 1item delayed on socket %i\n",item->request_socket);
-			s_pool.socket_state_list[r_socket_index].locked=1;
-			s_pool.socket_state_list[r_socket_index].has_block_item=1;
+			si->rs->locked = 1;
 		}
 
 	}
@@ -528,17 +468,14 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 			if (twolsfqd_dequeue_all(generic_item)<=0)
 			{
 				//fprintf(stderr,"2LSFQD 2item delayed on socket %i\n",item->request_socket);
-				s_pool.socket_state_list[r_socket_index].locked=1;
-				s_pool.socket_state_list[r_socket_index].has_block_item=1;
-
+				si->rs->locked = 1;
 			}
 		}
 		else
 		{
 			fprintf(stderr," still not enough credit left\n");
 			//fprintf(stderr,"2LSFQD 3item delayed on socket %i\n",item->request_socket);
-			s_pool.socket_state_list[r_socket_index].locked=1;
-			s_pool.socket_state_list[r_socket_index].has_block_item=1;
+			si->rs->locked = 1;
 
 		}
 
@@ -848,29 +785,8 @@ struct generic_queue_item* twolsfqd_edf_dequeue()
 
 		twolsfqd_virtual_time=twolsfqd_item->start_tag;
 
-		int i;
-		for (i=0;i<s_pool.pool_size;i++)
-		{
-			if (s_pool.socket_state_list[i].socket==twolsfqd_item->request_socket)
-			{
-				//fprintf(stderr,"setting socket %i = %i to locked = 0 /req sock: %i\n",s_pool.socket_state_list[i].socket, s_pool.poll_list[i].fd, twolsfqd_item->request_socket);
-				next_item->socket_data->unlock_index=i;
-				s_pool.socket_state_list[i].locked=0;
+		next_item->socket_data->rs->locked = 0;
 
-				s_pool.socket_state_list[i].current_item=next_item;
-				break;
-			}
-		}
-		if (i>=s_pool.pool_size)
-		{
-			fprintf(stderr,"[FFFFFFFFFFFFFFFFFFFFFFFFFFFFFATAL] socket %i not found anymore\n", twolsfqd_item->request_socket);
-			//heap_take(twolsfqd_packet_cmp, twolsfqd_heap_queue);
-
-		}
-		else
-		{
-			//fprintf(stderr,"[FFFFFFFFFFFFFFFFFFFFFFFFFFFFFATAL] socket %i found\n", twolsfqd_item->request_socket);
-		}
 		app_stats[app_index].req_go+=1;
 		app_stats[app_index].dispatched_requests+=1;
 		timewindow_current_queue_length++;
@@ -945,9 +861,15 @@ void nintyfive_percentile()//calculate the history in the current window
 			PINT_llist_p jtime =PINT_llist_new();
 			for (k=0;k<s_pool.pool_size;k++)
 			{
-					if (s_pool.socket_state_list[k].current_item!=NULL)
+				PINT_llist_p head = s_pool.socket_state_list[k].req_state_data->next;
+
+				while (head!=NULL)
+				{
+					if (((struct request_state *)head->item)->current_item!=NULL)
 					{
-						struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item * )(s_pool.socket_state_list[k].current_item->embedded_queue_item);
+						struct twolsfqd_queue_item * twolsfqd_item =
+								(struct twolsfqd_queue_item * )
+								(((struct request_state *)head->item)->current_item->embedded_queue_item);
 
 						if ( twolsfqd_item->dispatched==1 && twolsfqd_item->app_index==j)
 						{
@@ -964,6 +886,8 @@ void nintyfive_percentile()//calculate the history in the current window
 								break;
 						}
 					}
+					head = head -> next;
+				}
 			}
 
 			jtime= jtime->next;
@@ -1006,30 +930,33 @@ void nintyfive_percentile()//calculate the history in the current window
 		int l;
 		for (l=0;l<s_pool.pool_size;l++)
 		{
-			if (s_pool.socket_state_list[l].current_item!=NULL)
-			{
-				struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item * )(s_pool.socket_state_list[l].current_item->embedded_queue_item);
+			PINT_llist_p head = s_pool.socket_state_list[l].req_state_data->next;
 
-				if (twolsfqd_item->dispatched==0 && twolsfqd_item->app_index==j)
+			while (head!=NULL)
+			{
+				if (((struct request_state *)head->item)->current_item!=NULL)
 				{
-					struct timeval diff;
-					get_time_diff(&twolsfqd_item->queuedtime, &diff);
-					int app_index = twolsfqd_item->app_index;
-					fprintf(stderr,"queued item counts towards edf waiting: %i.%06i\n", (int)diff.tv_sec, (int)diff.tv_usec);
-					timeradd(&diff, timewindow_edf_waiting+app_index, timewindow_edf_waiting+app_index);
-					/**
-					 *
-					 *
-					 * check if they're in the edf queue yet!
-					 *
-					 *
-					 * */
+					struct twolsfqd_queue_item * twolsfqd_item =
+							(struct twolsfqd_queue_item * )
+							(((struct request_state *)head->item)->current_item->embedded_queue_item);
+
+					if (twolsfqd_item->dispatched==0 && twolsfqd_item->app_index==j)
+					{
+						struct timeval diff;
+						get_time_diff(&twolsfqd_item->queuedtime, &diff);
+						int app_index = twolsfqd_item->app_index;
+						fprintf(stderr,"queued item counts towards edf waiting: %i.%06i\n", (int)diff.tv_sec, (int)diff.tv_usec);
+						timeradd(&diff, timewindow_edf_waiting+app_index, timewindow_edf_waiting+app_index);
+						/**
+						 * check if they're in the edf queue yet!
+						 * */
+					}
 				}
+				head = head -> next;
 			}
 			//same thing did as when the request was dispatched.
 		}
 	}
-
 }
 
 

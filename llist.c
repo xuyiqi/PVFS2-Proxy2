@@ -12,6 +12,8 @@
 #include "scheduler_2LSFQD.h"
 /* PINT_llist_new() - returns a pointer to an empty list
  */
+
+int list_count;
 PINT_llist_p PINT_llist_new(
     void)
 {
@@ -29,6 +31,35 @@ int list_req_comp(void * a, void * b)
 			==((struct generic_queue_item *)b)->item_id
 	);
 }
+
+int list_req_state_comp(void * a, void * b)
+{
+	return !(
+			((long int)a)
+			== ((struct request_state *)b)->last_tag
+			);      //((struct generic_queue_item *)b)->item_id
+
+}
+
+int list_req_state_comp_curr(void * a, void * b)
+{
+	return !(
+			((long int)a)
+			== ((struct request_state *)b)->current_tag
+			);      //((struct generic_queue_item *)b)->item_id
+
+}
+
+int list_req_state_buffer_nonempty_nonlock_comp(void * a, void * b)
+{
+	struct request_state * rs = (struct request_state *)b;
+	//fprintf(stderr,"comparing op %i, head %i, tail %i, locked %i\n", rs->op, rs->buffer_head, rs->buffer_tail, rs->locked);
+	return !(rs->buffer_tail - rs->buffer_head != 0
+			 && rs->locked != 1 //currently blocked/delayed by the scheduler
+			);
+
+}
+
 int list_sfqd_sort_comp(PINT_llist * a, PINT_llist * b)//used for sfqd item only!
 {
 	//a is an int,

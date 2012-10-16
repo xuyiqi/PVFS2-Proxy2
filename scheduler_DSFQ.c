@@ -368,21 +368,7 @@ struct generic_queue_item * dsfq_dequeue(struct dequeue_reason r)
 		struct dsfq_queue_item * dsfq_item = (struct dsfq_queue_item *)(next_item->embedded_queue_item);
 		dsfq_virtual_time=dsfq_item->start_tag;
 
-		int i;
-		for (i=0;i<s_pool.pool_size;i++)
-		{
-			if (s_pool.socket_state_list[i].socket==dsfq_item->request_socket)
-			{
-				//Dprintf(D_CACHE, "[NEXT]socket from %s:%i is being unlocked\n",
-				//		s_pool.socket_state_list[i].ip,s_pool.socket_state_list[i].port);
 
-				next_item->socket_data->unlock_index=i;
-				s_pool.socket_state_list[i].current_item=next_item;
-				//s_pool.socket_state_list[i].locked=0;
-				//Dprintf(D_CACHE, "adding Original socket was %i\n",dsfq_item->request_socket);
-				break;
-			}
-		}
 		//fprintf(stderr, "releasing start_tag %i finish_tag:%i, weight:%i, app: %i, %s, queue length is %i\n", dsfq_item->start_tag, dsfq_item->finish_tag,
 		//		dsfq_item->weight, dsfq_item->app_index+1,s_pool.socket_state_list[i].ip, dsfq_queue_size-1);
 
@@ -394,7 +380,7 @@ struct generic_queue_item * dsfq_dequeue(struct dequeue_reason r)
 		fprintf(stderr,"\n");*/
 
 		dsfq_queue_size--;
-		int app_index=s_pool.socket_state_list[i].app_index;
+		int app_index=next_item->socket_data->app_index;
 		app_stats[app_index].dispatched_requests+=1;
 	}
 	else
@@ -1119,8 +1105,6 @@ int dsfq_add_ttl_tp(int this_amount, int app_index)
 	total_throughput+=this_amount;
     app_stats[app_index].byte_counter=app_stats[app_index].byte_counter+this_amount;
     app_stats[app_index].app_throughput=app_stats[app_index].app_throughput+this_amount;
-
-
 }
 
 const struct scheduler_method sch_dsfq = {

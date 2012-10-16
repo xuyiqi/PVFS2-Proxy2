@@ -7,7 +7,7 @@
 
 #ifndef MESSAGE_H_
 #define MESSAGE_H_
-
+#define BMI_HEADER_LENGTH 24
 #define MESSAGE_START_THRESHOLD 10
 #include <sys/types.h>
 #include <sys/socket.h>

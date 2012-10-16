@@ -164,13 +164,19 @@ int sfqd3_is_idle()
 		items+=sfqd3_heap_queues[i]->all_count;
 	}
 	return items;
-			//heap_empty(heap_queue);
-	//obsolete for sfqd2!
 }
 
-int sfqd3_current_size(int sock_index, long long actual_data_file_size)
+
+
+//heap_empty(heap_queue);
+	//obsolete for sfqd2!
+
+
+int sfqd3_current_size(struct request_state * original_rs, long long actual_data_file_size)
 {
-	struct generic_queue_item * current_item = s_pool.socket_state_list[sock_index].current_item;
+
+	struct generic_queue_item * current_item = original_rs->current_item;
+
 
 	struct sfqd3_queue_item * sfqd_item = (struct sfqd3_queue_item * )(current_item->embedded_queue_item);
 
@@ -184,72 +190,7 @@ int sfqd3_current_size(int sock_index, long long actual_data_file_size)
 	//update expected receivables for current item!
 	long long ask_size= sfqd_item->aggregate_size;
 
-	//if (ask_size+offset> actual_data_file_size)
-	{
-
-		//ask_size=actual_data_file_size-offset;
-	}
-
-	//fprintf(stderr,"item %i strip size:%i, server nr: %i, server count:%i offset:%lli, ask size:%lli\n",
-	//sfqd_item->stream_id,strip_size, server_nr, server_count, offset, ask_size );
-
-	int whole_strip_size=strip_size*server_count;
-
-
-	int offset_nr_whole_strip=offset/whole_strip_size;
-	int left_over_first=offset % whole_strip_size;
-	int left_over_second;
-
-
-
-	if (left_over_first>0)
-	{
-		left_over_second= whole_strip_size - left_over_first;
-	}
-	else
-	{
-		left_over_second=0;
-	}
-
-	//fprintf(stderr,"whole strip:%i, offset strips:%i, leftover left:%i, leftover right:%i\n",
-	//whole_strip_size, offset_nr_whole_strip, left_over_first, left_over_second
-	//);
-
-	int data_nr_whole_strip= (ask_size-left_over_second)/whole_strip_size;
-	int left_over_third=(ask_size-left_over_second) % whole_strip_size;
-
-	int left_over_current_top=0;
-	int left_over_current_bottom=0;
-
-	//fprintf(stderr,"data_nr_whole_strip:%i, left_over_third:%i\n", data_nr_whole_strip, left_over_third);
-
-    if(left_over_third >= server_nr*strip_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(left_over_third < (server_nr + 1) * strip_size)
-            left_over_current_bottom += left_over_third - (server_nr * strip_size);
-        else
-            left_over_current_bottom += strip_size;
-    }
-    //fprintf(stderr,"left over bottom1:%i\n", left_over_current_bottom);
-
-    if(left_over_first>0 && left_over_first >= server_nr*strip_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(left_over_first < (server_nr + 1) * strip_size)
-            left_over_current_bottom -= left_over_first - (server_nr * strip_size);
-        else
-            left_over_current_bottom -= strip_size;
-    }
-    //fprintf(stderr,"left over bottom2:%i\n",left_over_current_bottom);
-
-    int all_shared_size = data_nr_whole_strip*strip_size;
-    if (left_over_first>0)
-    {
-    	all_shared_size+=strip_size;
-    }
-
-    int my_shared_size=all_shared_size+left_over_current_bottom;
+	int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr);
     //fprintf(stderr,"current item adjusted to %i\n",my_shared_size);
     sfqd_item->task_size=my_shared_size;
 
@@ -535,18 +476,7 @@ struct generic_queue_item* sfqd3_get_next_request(struct dequeue_reason r)
 			sfqd3_virtual_times[r.last_app_index]=next_item->start_tag;
 
 			sfqd3_current_depths[r.last_app_index]++;
-
-			for (i=0;i<s_pool.pool_size;i++)
-			{
-				if (s_pool.socket_state_list[i].socket==next_item->request_socket)
-				{
-
-					next->socket_data->unlock_index=i;
-					s_pool.socket_state_list[i].current_item=next;
-					app_stats[r.last_app_index].dispatched_requests+=1;
-					break;
-				}
-			}
+			app_stats[r.last_app_index].dispatched_requests+=1;
 			return next;
 		}
 		else
@@ -635,46 +565,13 @@ struct generic_queue_item* sfqd3_get_next_request(struct dequeue_reason r)
 	next  = heap_node_value(hn);
 	struct sfqd3_queue_item * next_item = (struct sfqd3_queue_item *)(next->embedded_queue_item);
 	sfqd3_virtual_times[open_app]=next_item->start_tag;
-	//Dprintf(D_CACHE,"[CLOCK] virtual time is updated to %i\n",virtual_time);
-	//Dprintf(D_CACHE, "unblocking socket %i, %s:%i, tag %i\n", next_item->data_socket, next_item->data_ip, next_item->data_port, next_item->socket_tag);
 
 
-	//fprintf(stderr,"%s dispatching app %i, start tag %i\n", log_prefix, next_item->app_index, next_item->start_tag);
-
-	for (i=0;i<s_pool.pool_size;i++)
-	{
-		if (s_pool.socket_state_list[i].socket==next_item->request_socket)
-		{
-			next->socket_data->unlock_index=i;
-
-			s_pool.socket_state_list[i].current_item=next;
-			break;
-		}
-	}
-	if (i>=s_pool.pool_size)
-	{
-		fprintf(stderr,"[FATAL] socket %i not found anymore\n", next_item->request_socket);
-		heap_take(sfqd3_packet_cmp, sfqd3_heap_queues[open_app]);
-		goto next_retry;
-	}
-
-	int app_index=s_pool.socket_state_list[i].app_index;
+	int app_index=next->socket_data->app_index;
 	app_stats[app_index].req_go+=1;
 
-	//Dprintf(D_CACHE, "Performance++req_go:%i,%i from %s\n",req_go[app_index],app_index+1, s_pool.socket_state_list[i].ip);
-	//if (pthread_mutex_unlock (&counter_mutex)!=0)
-	{
-		//Dprintf(D_CACHE, "error unlocking when done incrementing counter in additional counters\n");
-	}
-	//fprintf(stderr,"dequeue depth:%i\n",current_depth);
-	app_stats[app_index].dispatched_requests+=1;
-	//if (next->item_id %10 ==0)
-	{
-		//fprintf(depthtrack, "%s: dispatching item: %li; queue size: %i, depth: %i, app1: %i, app2: %i, tag %i\n",
-				//log_prefix, next->item_id, sfqd_heap_queue->all_count, sfqd_current_depth, sfqd_heap_queue->count[0], sfqd_heap_queue->count[1], next_item->socket_tag);//, dispatched_requests[0], dispatched_requests[1]);
-	}
 
-	//fprintf(stderr,"app 0 %i app 1 %i\n", sfqd3_current_depths[0], sfqd3_current_depths[1]);
+	app_stats[app_index].dispatched_requests+=1;
 	return next;
 }
 

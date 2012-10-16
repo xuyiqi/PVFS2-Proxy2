@@ -33,6 +33,7 @@ struct socket_info
 	int buffer_size;
 	int unlock_index;
 	int state_index;
+	struct request_state* rs;
 
 };
 
@@ -90,7 +91,7 @@ struct scheduler_method
     void (* sch_get_scheduler_info) ();
     int (* sch_remove_item_by_socket)(int socket);
     int (* sch_is_idle)();
-    int (* sch_current_size)(int sock_index, int actual);
+    int (* sch_current_size)(struct request_state *rs, long long actual);
     int (* sch_add_ttl_throughput)(int this_amount, int app_index);
     int (* sch_calculate_diff)(int app_index);
     int sch_self_dispatch;

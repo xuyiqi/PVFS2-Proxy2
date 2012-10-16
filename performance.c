@@ -186,15 +186,23 @@ void start_counter()
 
 int get_block_count(int app_index)
 {
-	 int i;
-	 int block_count=0;
-	 for (i=0;i<s_pool.pool_size;i++)
-	 {
-		 if (s_pool.socket_state_list[i].app_index==app_index && s_pool.socket_state_list[i].locked)
-		 {
-			 Dprintf(D_CACHE,"%s is blocking\n", s_pool.socket_state_list[i].ip);
-			 block_count++;
-		 }
-	 }
-	 return block_count;
+	int i;
+	int block_count=0;
+	for (i=0;i<s_pool.pool_size;i++)
+	{
+		if (s_pool.socket_state_list[i].app_index==app_index )
+		{
+
+			PINT_llist_p head = s_pool.socket_state_list[i].req_state_data->next;
+			while (head!=NULL)
+			{
+				Dprintf(D_CACHE,"%s is blocking\n", s_pool.socket_state_list[i].ip);
+				struct request_state* rs = (struct request_state *)(head->item);
+				if (rs->locked)
+				{block_count++;}
+				head = head->next;
+			}
+		}
+	}
+	return block_count;
 }

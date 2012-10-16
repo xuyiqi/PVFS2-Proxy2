@@ -6,6 +6,7 @@
  */
 #include <sys/socket.h>
 #include <assert.h>
+#include "llist.h"
 #ifndef PROXY1_H_
 #define PROXY1_H_
 //#define LOGGING
@@ -88,7 +89,11 @@ enum endian
 };
 enum node{SERVER=0,CLIENT=1};
 
-enum mode{WRITE=0,READ=1,ACCEPT=2};
+//enum mode{WRITE=0,READ=1,ACCEPT=2};
+#define SOCKET_WRITE	1<<1
+#define SOCKET_READ		1<<2
+#define SOCKET_ACCEPT	1<<3
+
 struct proxy_option
 {
 	int port;
@@ -96,35 +101,71 @@ struct proxy_option
 	int logging;
 };
 
-struct socket_state
+struct request_state
 {
-	int socket;
-	enum node source; //data's origin socket
-	enum node target; //data's end socket
-	int counter_part; //corresponding socket on another node
-	int counter_index;
-	enum mode mode; //the socket's working mode
+
+	//these two may be obsolete because we don't have a direction now
+
 	int config_tag; //indicating that a get_config request is identified
-	int job_size;
-	int completed_size;
-	int ready_to_receive;
-	char* ip;
-	int port;
+
+	int job_size;//extracted from message header
+	int completed_size;//actual payload following the header received
+
+
 	int current_tag;
 	int last_tag;
 	int pvfs_io_type;
 	enum PVFS_server_op op;
-	int needs_output;
+	int needs_output;//obsolete
+
 	unsigned long long read_size;
 	unsigned long long read_offset;
-	int locked;
-	int check_response_completion;
+
+	char * buffer;
+	struct timeval receive_time;
+	int buffer_size;
+	int buffer_head;
+	int buffer_tail;
+
+	int locked;//obsolete
+	int has_block_item;//obsolete too
+	int check_response_completion; //what's the use?
 	int last_completion;
-	int has_block_item;
+
 	struct generic_queue_item * current_item;
+	struct request_state * original_request;//for responses
+
+	int last_flow;
+	int meta_response;
+};
+
+struct socket_state
+{
+	//add a list to the state, saving per-request data to the elements of the list
+	//rather than occupying/indicating the state of the socket
+
+	PINT_llist_p req_state_data;//stores request_state struct
+
+	int socket;
+
+	int counter_socket; //corresponding socket on peer node
+	int counter_socket_index; //corresponding to  socket index,
+
+	int accept_mode;
+
+	char* ip;
+	int port;
+
+	enum node source; //data's origin socket
+	enum node target; //data's end socket
 	int app_index;
 	int weight;
 	int deadline;
+
+
+
+	//per app/ip data stays here
+
 	struct timeval last_work_time_r;
 	struct timeval last_work_time_w;
 	int exp_smth_value_r;
@@ -137,10 +178,12 @@ struct socket_state
 	int last_exp2_w_app;
 	int last_exp2_r_machine;
 	int last_exp2_w_machine;
-	char * buffer;
-	int buffer_size;
-	int buffer_head;
-	int buffer_tail;
+
+	struct request_state * current_send_item;
+	struct request_state * current_receive_item;
+
+
+
 };
 #define IN_BUFFER_SIZE OUT_BUFFER_SIZE//only one buffer, so the buffer sizes are set to the same
 #define OUT_BUFFER_SIZE 70*1024  //70KB buffer
@@ -154,7 +197,8 @@ struct socket_pool
 };
 extern struct socket_pool  s_pool;
 int add_socket(int socket, int counter_part,
-		enum mode mode, enum node target, enum node source, char* client_ip, char* server_ip, int client_port, int server_port);
+		int accept_mode, enum node target, enum node source,
+		char* client_ip, char* server_ip, int client_port, int server_port);
 void create_socket_pool(int capacity);
 void increase_socket_pool();
 void remove_socket(int socket);

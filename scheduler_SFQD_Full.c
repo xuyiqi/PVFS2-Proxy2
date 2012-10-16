@@ -189,11 +189,10 @@ int sfqdfull_is_idle()
 		return PINT_llist_empty(sfqdfull_llist_queue);
 }
 
-int sfqdfull_current_size(int sock_index, long long actual_data_file_size)
+int sfqdfull_current_size(struct request_state * original_rs, long long actual_data_file_size)
 {
 
-	struct generic_queue_item * current_item = s_pool.socket_state_list[sock_index].current_item;
-
+	struct generic_queue_item * current_item = original_rs->current_item;
 	struct sfqdfull_queue_item * sfqdfull_item = (struct sfqdfull_queue_item * )(current_item->embedded_queue_item);
 
 	sfqdfull_item->data_file_size=actual_data_file_size;
@@ -206,79 +205,9 @@ int sfqdfull_current_size(int sock_index, long long actual_data_file_size)
 	//update expected receivables for current item!
 	long long ask_size= sfqdfull_item->aggregate_size;
 
-	//if (ask_size+offset> actual_data_file_size)
-	{
-
-		//ask_size=actual_data_file_size-offset;
-	}
-
-	//fprintf(stderr,"item %i strip size:%i, server nr: %i, server count:%i offset:%lli, ask size:%lli\n",
-	//sfqd_item->stream_id,strip_size, server_nr, server_count, offset, ask_size );
-
-	int whole_strip_size=strip_size*server_count;
-
-
-	int offset_nr_whole_strip=offset/whole_strip_size;
-	int left_over_first=offset % whole_strip_size;
-	int left_over_second;
-
-
-
-	if (left_over_first>0)
-	{
-		left_over_second= whole_strip_size - left_over_first;
-	}
-	else
-	{
-		left_over_second=0;
-	}
-
-	//fprintf(stderr,"whole strip:%i, offset strips:%i, leftover left:%i, leftover right:%i\n",
-	//whole_strip_size, offset_nr_whole_strip, left_over_first, left_over_second
-	//);
-
-	int data_nr_whole_strip= (ask_size-left_over_second)/whole_strip_size;
-	int left_over_third=(ask_size-left_over_second) % whole_strip_size;
-
-	int left_over_current_top=0;
-	int left_over_current_bottom=0;
-
-	//fprintf(stderr,"data_nr_whole_strip:%i, left_over_third:%i\n", data_nr_whole_strip, left_over_third);
-
-    if(left_over_third >= server_nr*strip_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(left_over_third < (server_nr + 1) * strip_size)
-            left_over_current_bottom += left_over_third - (server_nr * strip_size);
-        else
-            left_over_current_bottom += strip_size;
-    }
-    //fprintf(stderr,"left over bottom1:%i\n", left_over_current_bottom);
-
-    if(left_over_first>0 && left_over_first >= server_nr*strip_size)
-    {
-        /* if so, tack that on to the physical offset as well */
-        if(left_over_first < (server_nr + 1) * strip_size)
-            left_over_current_bottom -= left_over_first - (server_nr * strip_size);
-        else
-            left_over_current_bottom -= strip_size;
-    }
-    //fprintf(stderr,"left over bottom2:%i\n",left_over_current_bottom);
-
-    int all_shared_size = data_nr_whole_strip*strip_size;
-    if (left_over_first>0)
-    {
-    	all_shared_size+=strip_size;
-    }
-
-    int my_shared_size=all_shared_size+left_over_current_bottom;
+    int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr);
     //fprintf(stderr,"current item adjusted to %i\n",my_shared_size);
     sfqdfull_item->task_size=my_shared_size;
-    /*
-     *
-     * !!!remember, you can change last_finish_tag?//unless you use a linked list/flat format data structure that supports re-ordering
-     *
-     * */
 
     return my_shared_size;
 
@@ -404,7 +333,10 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->data_port=port;
 	item->data_ip=ip;
 	item->request_port= s_pool.socket_state_list[r_socket_index].port;
-	item->task_size=length;
+
+	item->task_size=length;//derived from current_datat_size
+	item->got_size=0;
+
 	//fprintf(stderr,"task size:%i/%i\n",length, pi->aggregate_size);
 
 	//fprintf(depthtrack, "%s %s offset %lli size %i %s:%i, %i\n", log_prefix, bptr, pi->req_offset, length,
@@ -413,7 +345,7 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->socket_tag=socket_tag;
 	item->app_index=app_index;
 	item->stream_id=app_stats[app_index].stream_id++;
-	item->got_size=0;
+
 	item->request_socket=s_pool.socket_state_list[r_socket_index].socket;
 	item->io_type=io_type;
 	item->buffer=request;
@@ -592,24 +524,9 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 				next_queue_item->socket_tag, next_queue_item->app_index,
 				s_pool.socket_state_list[next_queue_item->request_socket_index].ip);
 
-		int i;
-		for (i=0;i<s_pool.pool_size;i++)
-		{
-			if (s_pool.socket_state_list[i].socket==next_queue_item->request_socket)
-			{
 
-				next->socket_data->unlock_index=i;
-				s_pool.socket_state_list[i].current_item=next_item;
-				break;
-			}
-		}
-		if (i>=s_pool.pool_size)
-		{
-			fprintf(stderr,"[FATAL] socket %i not found anymore\n", next_queue_item->request_socket);
-			exit(-1);
-		}
 
-		int app_index=s_pool.socket_state_list[i].app_index;
+		int app_index=next_item->socket_data->app_index;
 		app_stats[app_index].req_go+=1;
 
 		app_stats[app_index].dispatched_requests+=1;

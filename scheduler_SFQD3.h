@@ -65,7 +65,7 @@ int sfqd3_update_on_request_completion(void* arg);
 int sfqd3_load_data_from_config (dictionary * dict);
 int sfqd3_init();
 int sfqd3_is_idle();
-int sfqd3_current_size();
+int sfqd3_current_size(struct request_state * original_rs, long long actual_data_file_size);
 
 extern int current_depth_large;
 extern int current_depth_small;

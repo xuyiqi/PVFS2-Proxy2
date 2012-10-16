@@ -85,7 +85,7 @@ int twolsfqd_load_data_from_config (dictionary * dict);
 int twolsfqd_init();
 int twolsfqd_is_idle();
 int twolsfqd_edf_dequeue_all(int enqueued_socket);
-int twolsfqd_current_size();
+int twolsfqd_current_size(struct request_state * original_rs, long long actual_data_file_size);
 void twolsfqd_update_spareness();
 extern int twolsfqd_virtual_time;
 extern int twolsfqd_current_depth;

@@ -74,7 +74,7 @@ int sfqd_update_on_request_completion(void* arg);
 int sfqd_load_data_from_config (dictionary * dict);
 int sfqd_init();
 int sfqd_is_idle();
-int sfqd_current_size();
+int sfqd_current_size(struct request_state * original_rs, long long actual_data_file_size);
 extern int virtual_time;
 extern int current_depth;
 extern char* clients[];
