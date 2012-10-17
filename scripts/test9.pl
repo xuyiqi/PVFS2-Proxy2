@@ -1823,7 +1823,7 @@ sub exec_MD{
 	#./multi-md-test -d /home/users/yiqi/mnt/mdtest18 -i -n 800 -s 65536 -a 1 -p 1 -c 48 -i
 
         $r = "ssh $appmachine $mpilocation/mpiexec -machinefile $softwarelocation/$app_machine[$num-1] -n $app_client[$num-1] $mdlocation/multi-md-test";
-        $r = $r." -d ".$changedfns." -i -n ".$app_block[$num-1]." -s ".$app_fsize[$num-1];
+        $r = $r." -d ".$changedfns." -i -n ".$app_block[$num-1]." -s ".$app_fsize[$num-1]." -g ".$num. " -b ".$PerformanceInterval;
         if ($MPIMode eq 'real')
         {
                 $r = $r." -a 1 ";#pvfs
