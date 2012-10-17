@@ -36,6 +36,24 @@ struct request_state * find_request(int index, int tag, int rank)
     return (NULL);
 }
 
+struct request_state * find_last_request(int index, int tag)
+{
+	PINT_llist_p l_p = s_pool.socket_state_list[index].req_state_data;
+
+    if (!l_p || !l_p->next )	/* no or empty list */
+    	return (NULL);
+    int count=0;
+    struct request_state * last = NULL;
+    for (l_p = l_p->next; l_p; l_p = l_p->next)
+    {
+    	if (tag == ((struct request_state *)(l_p->item))->current_tag)
+    	{
+    		last = (struct request_state *)(l_p->item);
+    	}
+    }
+    return last;
+}
+
 
 /**
  * Removes a socket from the socket pool by its index in the pool.  Its counter part should together be removed by the caller immediately.
@@ -227,6 +245,7 @@ int add_socket_to_pool(int socket, int counter_part,
 	s_pool.socket_state_list[s_pool.pool_size].accept_mode=accept_mode;
 	s_pool.socket_state_list[s_pool.pool_size].target=target;
 	s_pool.socket_state_list[s_pool.pool_size].source=source;
+	s_pool.socket_state_list[s_pool.pool_size].incomplete_mode = 0;
 
 	initialize_request_states(s_pool.pool_size);
 
@@ -280,6 +299,7 @@ int add_socket_to_pool(int socket, int counter_part,
 	s_pool.socket_state_list[s_pool.pool_size].ip=server_ip;
 	s_pool.socket_state_list[s_pool.pool_size].port=server_port;
 	s_pool.socket_state_list[s_pool.pool_size].accept_mode=0;
+	s_pool.socket_state_list[s_pool.pool_size].incomplete_mode = 0;
 
 	initialize_request_states(s_pool.pool_size);
 

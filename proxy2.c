@@ -413,9 +413,15 @@ int main(int argc, char **argv)
 									fprintf(stderr,"resp: didn't even get the bmi header, continuing\n");
 									continue;
 								}
+								else if (check_stat == -3)
+								{
+									fprintf(stderr,"did not receive enough data for on a message %i\n", check_stat);
+									continue;
+									//exit(-1);
+								}
 								else
 								{
-									fprintf(stderr,"critical error on resp %i\n", check_stat);
+									fprintf(stderr,"unrecognized return check %i\n", check_stat);
 									exit(-1);
 								}
 							}

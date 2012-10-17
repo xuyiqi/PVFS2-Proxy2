@@ -152,6 +152,7 @@ struct socket_state
 	int counter_socket_index; //corresponding to  socket index,
 
 	int accept_mode;
+	int incomplete_mode;//partial small message peeked, but not complete(req or resp)
 
 	char* ip;
 	int port;

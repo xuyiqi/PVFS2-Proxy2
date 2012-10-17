@@ -170,11 +170,19 @@ struct request_state * update_socket_current_send(int index)
  * must also correspods to the last-received item. The important thing is to udpate
  * the current receive item right after it is put in the tail of the working list
  * */
-struct request_state * update_socket_current_receive(int index)
+struct request_state * update_socket_current_receive(int index, long tag)
 {
+
+	//tag >0: specific tag
+	//should also be last received item of the tag from the head of the list
+	if (tag < 0 )
+	{
+		fprintf(stderr, "error: tag is negative: %i\n", tag);
+		exit(-1);
+	}
 	if (s_pool.socket_state_list[index].current_receive_item == NULL)
 	{
-		struct request_state * rs = (struct request_state *)PINT_llist_tail(s_pool.socket_state_list[index].req_state_data);
+		struct request_state * rs = find_last_request(index, tag);
 		if (rs == NULL)
 		{
 			return NULL;
@@ -205,6 +213,7 @@ int check_request(int index)
 	int ret = get_bmi_header(header, eheader, read_socket);
 	int counter_index=s_pool.socket_state_list[index].counter_socket_index;
 
+	long long tag = -1;
 	if (ret!=eheader)
 	{
 		fprintf(stderr,"Error getting bmi header for request. Expected: %i, got:%i\n",eheader, ret);
@@ -212,35 +221,50 @@ int check_request(int index)
 	}
 	else
 	{
-
-
 		//long long mnr=output_param(header, 0, 4 , "magic number",NULL,0);
 		//output_param(header, 4, 4 , "mode",NULL,0);
-		long long tag=output_param(header, 8, 8 , "tag",NULL,0);
+		tag=output_param(header, 8, 8 , "tag",NULL,0);
 		long long size=output_param(header, 16, 8 , "size",NULL,0);
-		struct request_state* new_rs = add_request_to_socket(index, tag);
-		new_rs->last_tag = -1;
-		new_rs->current_tag = tag;
-		new_rs->job_size = size + BMI_HEADER_LENGTH;
-		new_rs->buffer = malloc((size+BMI_HEADER_LENGTH)*sizeof(char));
-		new_rs->buffer_head = 0;
-		new_rs->buffer_tail = 0;
-		new_rs->buffer_size = size + BMI_HEADER_LENGTH;
-		new_rs->completed_size = 0;
-		new_rs->locked = 0;
-		new_rs->pvfs_io_type = -1;
-		new_rs->meta_response = 0;
+		struct request_state* new_rs;
+		if (s_pool.socket_state_list[index].incomplete_mode ==0)
+		{
+			new_rs = add_request_to_socket(index, tag);
+			new_rs->last_tag = -1;
+			new_rs->current_tag = tag;
+			new_rs->job_size = size + BMI_HEADER_LENGTH;
+			new_rs->buffer = malloc((size+BMI_HEADER_LENGTH)*sizeof(char));
+			new_rs->buffer_head = 0;
+			new_rs->buffer_tail = 0;
+			new_rs->buffer_size = size + BMI_HEADER_LENGTH;
+			new_rs->completed_size = 0;
+			new_rs->locked = 0;
+			new_rs->pvfs_io_type = -1;
+			new_rs->meta_response = 0;
+			fprintf(stderr,"new request on socket %i, tag %i\n", index, tag);
+		}
+		else
+		{
+			new_rs = find_last_request(index, tag);
+			if (new_rs == NULL)
+			{
+				fprintf(stderr,"incomplete old request is null on %i, tag %i\n", index, tag);
+				exit(-1);
+			}
+			else
+			{
+				fprintf(stderr,"old request not found on %i, tag %i\n", index, tag);
+			}
+		}
 		struct request_state * old_rs = find_request(counter_index, tag, 1);
 		//comparing on the server side, the last_tag, which is set by receiving a response, but initially a -1
 
 		struct timeval receive_time;
 		gettimeofday(&receive_time, 0);
-		new_rs->receive_time = receive_time;
+
 		if (old_rs != NULL && tag == old_rs->current_tag)//is_tag_used(s_pool.socket_state_list[counter_index].ip, s_pool.socket_state_list[counter_index].port, tag))
 		{
 			new_rs->config_tag=0;
 			new_rs->op=PVFS_DATA_FLOW;
-
 
 			if (old_rs->original_request == NULL)
 			{
@@ -268,9 +292,11 @@ int check_request(int index)
 			{
 				fprintf(stderr, "Error getting header of pvfs for request. Expected: %i, got:%i\n",eheader, ret);
 				ret=-3;//0, -1 and -2 are occupied by get_bmi_header
+				s_pool.socket_state_list[index].incomplete_mode = 1;
 			}
 			else
 			{
+				s_pool.socket_state_list[index].incomplete_mode = 0;
 				long long operation = output_param(header2, 32, 4, "pvfs_operation", ops,40);
 
 				new_rs->op = operation;
@@ -496,7 +522,7 @@ int check_request(int index)
 	}//end bmi header right
 	if (ret > 0)
 	{
-		update_socket_current_receive(index);
+		update_socket_current_receive(index, tag);
 
 	}
 	return ret;
@@ -509,6 +535,7 @@ int check_response(int index)//peeking
 	int read_socket=s_pool.poll_list[index].fd;
 	int counter_index=s_pool.socket_state_list[index].counter_socket_index;
 	int ret=get_bmi_header(header, eheader, read_socket);
+	int tag = -1;
 	if (ret!=eheader)
 	{
 		fprintf(stderr, "error occured while getting bmi header for response on socket %i. Expected: %i, got:%i\n",read_socket,eheader, ret);
@@ -519,7 +546,7 @@ int check_response(int index)//peeking
 	{
 		//long long mnr=output_param(header, 0, 4 , "magic number",NULL,0);
 		//output_param(header, 4, 4 , "mode",NULL,0);
-		long long tag = output_param(header, 8, 8 , "tag",NULL,0);
+		tag = output_param(header, 8, 8 , "tag",NULL,0);
 		struct request_state * response_rs = find_request(index, tag, 1);
 		struct request_state * request_rs = find_request(counter_index, tag, 1);
 		if ( response_rs == NULL )
@@ -552,31 +579,47 @@ int check_response(int index)//peeking
 		{		//pvfs data flow from server (read)
 
 			//create a new response_rs here;
-			struct request_state * new_response_rs = add_request_to_socket(index, tag);
-
-			new_response_rs->buffer = malloc( ( size + BMI_HEADER_LENGTH ) * sizeof( char ) );
-			//fprintf(stderr," address of new buffer from server:%i on %ith socket, %i\n", (int)s_pool.socket_state_list[index].buffer, index, s_pool.socket_state_list[index].socket);
-			new_response_rs->buffer_head = 0;
-			new_response_rs->buffer_tail = 0;
-			new_response_rs->buffer_size = size + BMI_HEADER_LENGTH;
-			new_response_rs->job_size = size + BMI_HEADER_LENGTH;
-			new_response_rs->completed_size = 0;
-			new_response_rs->last_tag = tag;
-			new_response_rs->current_tag = tag;
-			new_response_rs->last_flow = 0;
-			new_response_rs->config_tag = 0;
-			new_response_rs->op = PVFS_DATA_FLOW;
-			new_response_rs->pvfs_io_type = response_rs->original_request->pvfs_io_type;
-			new_response_rs->locked = 0;
-			new_response_rs->original_request = response_rs->original_request;
-			new_response_rs->meta_response = 0;
-
+			struct request_state * new_response_rs;
+			if (s_pool.socket_state_list[index].incomplete_mode ==0)
+			{
+				new_response_rs = add_request_to_socket(index, tag);
+				new_response_rs->buffer = malloc( ( size + BMI_HEADER_LENGTH ) * sizeof( char ) );
+				//fprintf(stderr," address of new buffer from server:%i on %ith socket, %i\n", (int)s_pool.socket_state_list[index].buffer, index, s_pool.socket_state_list[index].socket);
+				new_response_rs->buffer_head = 0;
+				new_response_rs->buffer_tail = 0;
+				new_response_rs->buffer_size = size + BMI_HEADER_LENGTH;
+				new_response_rs->job_size = size + BMI_HEADER_LENGTH;
+				new_response_rs->completed_size = 0;
+				new_response_rs->last_tag = tag;
+				new_response_rs->current_tag = tag;
+				new_response_rs->last_flow = 0;
+				new_response_rs->config_tag = 0;
+				new_response_rs->op = PVFS_DATA_FLOW;
+				new_response_rs->pvfs_io_type = response_rs->original_request->pvfs_io_type;
+				new_response_rs->locked = 0;
+				new_response_rs->original_request = response_rs->original_request;
+				new_response_rs->meta_response = 0;
+				fprintf(stderr, "new response on %i, tag %i\n", index, tag);
+			}
+			else
+			{
+				new_response_rs = find_last_request(index, tag);
+				if (new_response_rs == NULL)
+				{
+					fprintf(stderr,"incomplete old response is null on %i, tag %i\n", index, tag);
+					exit(-1);
+				}
+				else
+				{
+					fprintf(stderr,"old response not found on %i, tag %i\n", index, tag);
+				}
+			}
 			response_rs = new_response_rs;
 			//add to the list
 
 			ret=1;
 		}
-		else if (request_rs!=NULL &&
+		else if (request_rs!=NULL && //which means, old response has a job_size >=0 so it falls through here
 				request_rs->current_tag==tag &&
 				request_rs->op == PVFS_SERV_IO)
 		{
@@ -628,9 +671,11 @@ int check_response(int index)//peeking
 			{
 				fprintf(stderr, "Error getting pvfs header for response. Expected: %i, got:%i\n",eheader, ret);
 				ret = -3;//get_bmi_header already occupied 0, -1, and -2
+				s_pool.socket_state_list[index].incomplete_mode = 1;
 			}
 			else
 			{
+				s_pool.socket_state_list[index].incomplete_mode = 0;
 				long long operation = output_param(header2, 32, 4, "pvfs_operation", ops,40);
 				fprintf(stderr,"SERVER RESPONSE OP:%s(%i)\n", ops[operation], operation);
 				response_rs->op = operation;
@@ -660,6 +705,7 @@ int check_response(int index)//peeking
 				if (operation==PVFS_SERV_GETCONFIG)
 				{
 					ret=1;
+
 					response_rs->config_tag=1;
 					fprintf(stderr,"GET_CONFIG received feedback\n");
 				}
@@ -925,7 +971,7 @@ int check_response(int index)//peeking
 	}//end successful bmi header read
 	if (ret > 0)
 	{
-		update_socket_current_receive(index);
+		update_socket_current_receive(index, tag);
 
 	}
 	return ret;
