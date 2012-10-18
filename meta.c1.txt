@@ -1,0 +1,92 @@
+INITIALIZE_ONLY=1
+LifetimeCounter=10
+MPI_MODE=simulated
+ALGORITHM=SFQD_Full
+ALGORITHMPARAMS=depth|2=EDF_timewindow|500;SARC_timewindow|200;EDF_infinite|100;replenish_amount|100
+NUM_SERVERS=4
+TEST_MODE=SYM
+ROUNDS=1
+CLEANUP=1,0,0=-1 means restarting server only
+DROPCACHE=1,1,1
+PVFSSTORAGE=/data/yiqi
+IO_MODE=alt-aio=alt_aio=directio=null-aio=dbpf
+SYNC=1=METASYNC;TROVE_SYNC
+LOCALFS=0;1;ext3;/dev/sdb;data|journal=1 means enabled; 1 means level:1 is re-mount only, 2 means makefs
+SERVERCONF=1=0 means using existing PVFS file; it does not create a new one using the settings and speeds up the experiment
+ASYMNODES=1,2,3,4;1,2,3,4,5,6,7,8;1,2,3,4;1,2,3,4,5,6,7,8;1,2,3,4;1,2,3,4,5,6,7,8;1,2,3,4;1,2,3,4,5,6,7,8;1,2,3,4;1,2,3,4,5,6,7,8;1,2,3,4;1,2,3,4,5,6,7,8;
+CLIENTNODES=c2n7,c2n8
+SERVERNODES=c1n3,c1n4
+METANODES=c1n5,c1n6
+LOCATIONS=weights.location.ics
+HOME=/home/users/yiqi
+STATS=/home/users/yiqi/tests/software
+SOFTWARE=/home/users/yiqi/tests/software
+PVFSMNT=/home/users/yiqi/mnt
+PVFSPREFIX=/home/users/yiqi/tests/software/pvfs2/sbin
+PVFSKOPREFIX=/home/users/yiqi/tests/software/pvfs2/bin=pvfs2.ko
+PVFSCLIENTPREFIX=/home/users/yiqi/tests/software/pvfs2/bin=pvfs2-client -f -p ./pvfs2-client-core
+PROXYPREFIX=/home/users/yiqi/tests/software/proxy2.meta
+MPIPREFIX=/home/users/yiqi/tests/software/mpich2/bin
+IORPREFIX=/home/users/yiqi/tests/software/IOR-2.10.3-random/src/C=not enabling random support yet
+WRFPREFIX=/home/users/yiqi/tests/software/wrf/bin
+NPBPREFIX=/home/users/yiqi/NPB-amd/NPB3.3.1/NPB3.3-MPI/bin
+PVFSMDTESTPREFIX=/home/users/yiqi/tests/software/pvfs2.8.2/pvfs-2.8.2/test/client/mpi-io
+PVFSUTILPREFIX=/home/users/yiqi/tests/software/pvfs2/bin
+TOP=0
+IOSTAT=0
+VMSTAT=0
+MPSTAT=0
+SAR=0
+TESTTIME=WAIT=600
+PERFORMANCE_START_AT_ONCE=0
+PERIOD_PERFORMANCE=0
+PERFORMANCE_INTERVAL=10
+PROXYBUFFER=1100000
+COST=0=none0,gpa1,exp3
+NUM_APPS=1
+APP1=IOR=MD
+RW=wk
+ACCESS=sequential=randomwroffset
+PERCENTAGE=50=for IOR's random value
+PROP=1
+LAT=100
+RATE=200
+CLIENT_NO=96=should match npb benchmark!
+MACHINEFILE=machinefile.c1.n5
+CLIENT_NODES=1,2
+SERVER_NODES=1,2,3,4=FOR ASYM NODES
+FILESIZE=104857600=
+START=0
+LENGTH=WAIT
+FILENAME=MD1=important for NAS!:)
+BLOCKSIZE=1048756=in md test, this number means the number of iterations for each benchmark operation(e.g. create, rm, write, read, etc.)
+LCOUNT=2
+LOCATION1=172.23.3.37
+LOCATION2=172.23.3.38
+TOUCH=0
+TRACE_FILE==constant500=rate begins with number; trace file begins with T
+OTHER_PARAMS=
+=
+APP2=MD
+RW=wk
+ACCESS=sequential=randomwroffset
+PERCENTAGE=50=for IOR's random value
+PROP=2
+LAT=100
+RATE=200
+CLIENT_NO=96=should match iwth npb benchmark!
+MACHINEFILE=machinefile.c1.n6
+CLIENT_NODES=2,4
+SERVER_NODES=1,2,3,4=FOR ASYM NODES
+FILESIZE=400m=
+START=0
+LENGTH=WAIT
+FILENAME=MD2=important for NAS!:)
+BLOCKSIZE=800=in md test, this number means the number of iterations for each benchmark operation(e.g. create, rm, write, read, etc.)
+LCOUNT=2
+LOCATION1=172.23.3.6
+LOCATION2=172.23.3.3
+TOUCH=0
+TRACE_FILE==constant500=rate begins with number; trace file begins with T
+OTHER_PARAMS=
+

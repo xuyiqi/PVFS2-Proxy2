@@ -207,8 +207,11 @@ int sfqdfull_current_size(struct request_state * original_rs, long long actual_d
 
     int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr);
     //fprintf(stderr,"current item adjusted to %i\n",my_shared_size);
-    sfqdfull_item->task_size=my_shared_size;
+    int temp = sfqdfull_item->task_size;
+    sfqdfull_item->task_size = my_shared_size;
 
+
+    fprintf(stderr,"cost adjusted from %i to %i\n", temp, my_shared_size);
     return my_shared_size;
 
 }
@@ -392,6 +395,7 @@ int sfqdfull_update_on_request_completion(void* arg)
 	struct generic_queue_item * current_item = (complete->current_item);
 
 	struct sfqdfull_queue_item * sfqdfull_item = (struct sfqdfull_queue_item * )(current_item->embedded_queue_item);
+	fprintf(stderr,"completed size: %i\n", complete->complete_size);
 	if (complete->complete_size==-1)
 	{
 		//this is a skip flag for response messages
@@ -402,9 +406,12 @@ int sfqdfull_update_on_request_completion(void* arg)
 		return 0;
 
 	}
-	//struct proxy_message * request = (struct proxy_message)(complete->proxy_message);
 
+
+	//struct proxy_message * request = (struct proxy_message)(complete->proxy_message);
+	fprintf(stderr,"complete size from %i",sfqdfull_item->got_size);
 	sfqdfull_item->got_size+=(complete->complete_size);
+	fprintf(stderr,"=%i+%i\n",complete->complete_size,sfqdfull_item->got_size);
 
 	if (sfqdfull_item->task_size==sfqdfull_item->got_size)
 	{
@@ -505,7 +512,7 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 			next_queue_item = (struct sfqdfull_queue_item *)(next_item->embedded_queue_item);
 			sfqdfull_list_queue_count[next_queue_item->app_index]--;
 			found=1;
-			fprintf(stderr," meta dispatching \n");
+			fprintf(stderr,"dispatching \n");
 			int app_index=next_queue_item->app_index;
 			if (next_queue_item->app_index==1 && sfqdfull_list_queue_count[0]==0){
 				fprintf(stderr,"%s %s, ********************************************** warning app 0 has no item left in the queue\n", bptr, log_prefix);

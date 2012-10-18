@@ -306,12 +306,66 @@ int logical_to_physical_size_dparam (struct dist* dparam)
     return my_shared_size;
 }
 
-int get_my_share(int strip_size, int server_count, long long  offset, long long  ask_size, int server_nr)
+int get_my_share(int strip_size, int server_count,
+		long long  offset, long long  ask_size, int server_nr)
 {
     int whole_strip_size = strip_size * server_count;
-    int offset_nr_whole_strip = offset / whole_strip_size;
-    int left_over_first = offset % whole_strip_size;
-    int left_over_second;
+    int offset_nr_whole_strip = offset / whole_strip_size;//how many whole stripe the offset has passed
+    int left_over_first = offset % whole_strip_size;//the passed bytes (where we skipped)
+    int left_over_second;//the remaining part of the first stripe (where we have actual data)
+
+    fprintf(stderr,"strip_size %i server_count %i offset %i ask_size %i server_nr %i\n",
+    		strip_size, server_count, offset, ask_size, server_nr);
+    fprintf(stderr,"%i + %i <= (%i +1) * %i ? %i\n",
+    		ask_size, offset, offset_nr_whole_strip, strip_size,
+    		ask_size + offset <= (offset_nr_whole_strip + 1) * strip_size
+    );
+    if ( ask_size + offset <= (offset_nr_whole_strip + 1) * whole_strip_size)
+    	//the start and end of the file access stays in the same whole stripe
+    {
+    	if (left_over_first > (server_nr+1) * strip_size)
+    	{
+    		//this should not happen, only one whole stripe is occupied, but the head
+    		//margin has not reached this server!
+    		fprintf(stderr,"case 1, failure, %i, %i, %i\n", left_over_first, server_nr, strip_size);
+    		exit(-1);
+    	}
+    	else
+    	{
+    		int small_first_left_over = left_over_first % strip_size;//the piece that pads ahead in a single strip/chunk
+    		int first_preceeding_strips = left_over_first / strip_size;
+    		server_nr -= first_preceeding_strips;
+    		int number_strips = (small_first_left_over + ask_size) / strip_size + 1;
+    		if (number_strips == 1 && small_first_left_over + ask_size <= strip_size)
+    		{
+    			return ask_size;
+    		}
+    		if (number_strips == 1 && small_first_left_over + ask_size > strip_size)
+    		{
+    			fprintf(stderr,"case 2, failure, %i, %i, %i\n",
+    					small_first_left_over, ask_size, strip_size);
+    			exit(-1);
+    		}
+    		//num_strip > 1
+    		if (ask_size + small_first_left_over >= server_nr  * strip_size)
+    		{
+    			if (server_nr ==0)
+    			{
+    				return strip_size - small_first_left_over;
+    			}
+    			else
+    			{
+    				return strip_size;
+    			}
+    		}
+    		else
+    		{
+    			return (ask_size + small_first_left_over) % strip_size;
+    		}
+    	}
+    }
+
+
     if(left_over_first > 0){
         left_over_second = whole_strip_size - left_over_first;
     }else{
@@ -320,23 +374,27 @@ int get_my_share(int strip_size, int server_count, long long  offset, long long 
     //fprintf(stderr,"whole strip:%i, offset strips:%i, leftover left:%i, leftover right:%i\n",
     //whole_strip_size, offset_nr_whole_strip, left_over_first, left_over_second
     //);
-    int data_nr_whole_strip = (ask_size - left_over_second) / whole_strip_size;
+    int data_nr_whole_strip = (ask_size - left_over_second) / whole_strip_size; //larger than 0
     int left_over_third = (ask_size - left_over_second) % whole_strip_size;
     int left_over_current_top = 0;
     int left_over_current_bottom = 0;
-    //fprintf(stderr,"data_nr_whole_strip:%i, left_over_third:%i\n", data_nr_whole_strip, left_over_third);
+
     if(left_over_third >= server_nr * strip_size){
-        /* if so, tack that on to the physical offset as well */
+        //third left over passed my start boundary
         if(left_over_third < (server_nr + 1) * strip_size)
+        {
+        	//but ends in my end boundary
             left_over_current_bottom += left_over_third - (server_nr * strip_size);
-
+        }
         else
+        {
+        	//and passed to further stripes
             left_over_current_bottom += strip_size;
-
+        }
     }
-    //fprintf(stderr,"left over bottom1:%i\n", left_over_current_bottom);
-    if(left_over_first > 0 && left_over_first >= server_nr * strip_size){
-        /* if so, tack that on to the physical offset as well */
+
+    if(left_over_first >= server_nr * strip_size){
+        //first left over passed my start boundary
         if(left_over_first < (server_nr + 1) * strip_size)
             left_over_current_bottom -= left_over_first - (server_nr * strip_size);
 
@@ -346,7 +404,8 @@ int get_my_share(int strip_size, int server_count, long long  offset, long long 
     }
     //fprintf(stderr,"left over bottom2:%i\n",left_over_current_bottom);
     int all_shared_size = data_nr_whole_strip * strip_size;
-    if(left_over_first > 0){
+
+    if ( left_over_first > 0){
         all_shared_size += strip_size;
     }
     int my_shared_size = all_shared_size + left_over_current_bottom;

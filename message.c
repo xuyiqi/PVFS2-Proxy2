@@ -722,6 +722,8 @@ int check_response(int index)//peeking
 						returned_size = *(long long *)(header2+40);
 						//if it returned zero...that would mean this I/O complete..work like write_completion....
 						//but we may need to adjust last_finish tag forward a little...
+
+						fprintf(stderr,"the response is a %i\n", response_rs->pvfs_io_type);
 						if (response_rs->pvfs_io_type==PVFS_IO_READ && scheduler_on == 1)
 						{
 							//fprintf(stderr,"total resp size is %i returned size is %llu, IO type is %i (operation returns %lli)\n",eheader,returned_size,s_pool.socket_state_list[index].pvfs_io_type,operation);
@@ -743,6 +745,7 @@ int check_response(int index)//peeking
 							 * current size reflects this server's share. //only implemented in SFQD
 							 * the task_size of an item should be changed inside
 							 * */
+							fprintf(stderr,"adjusting size\n");
 							if (current_size <= 0)
 									//eof returns -1;
 							{

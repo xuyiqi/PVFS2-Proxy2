@@ -601,6 +601,7 @@ int main(int argc, char **argv)
 								cmsg.current_item=current_item;
 								int ret = (*(static_methods[scheduler_index]->sch_update_on_request_completion))((void*)&cmsg);
 								//return value is the whole I/O request size
+								fprintf(stderr,"flow returning %i\n",ret);
 								if (ret>0 && static_methods[scheduler_index]->sch_self_dispatch==0)
 								{
 									s_pool.socket_state_list[i].current_receive_item->last_flow = 1;
