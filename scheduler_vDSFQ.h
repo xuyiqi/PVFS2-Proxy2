@@ -1,9 +1,12 @@
 /*
- * scheduler_vDSFQ.h
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Dec 13, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 
 #ifndef SCHEDULER_VDSFQ_H_
 #define SCHEDULER_VDSFQ_H_

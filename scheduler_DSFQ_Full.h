@@ -1,9 +1,12 @@
 /*
- * scheduler.h
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: May 20, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 
 #ifndef SCHEDULER_SFQD_FULL_H_
 #define SCHEDULER_SFQD_FULL_H_

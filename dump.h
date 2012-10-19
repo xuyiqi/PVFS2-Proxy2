@@ -1,8 +1,10 @@
 /*
- * dump.h
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Jul 6, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
 
 #ifndef DUMP_H_

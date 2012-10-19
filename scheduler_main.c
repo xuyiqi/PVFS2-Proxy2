@@ -1,14 +1,12 @@
 /*
- * scheduler_main.c
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Oct 6, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
 
-/*
- * include the necessary headers, functions, variables, etc
- *
- * */
 
 #include "scheduler_main.h"
 #include <stdlib.h>

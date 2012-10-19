@@ -1,9 +1,12 @@
 /*
- * proxy2.c
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Mar 30, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 
 #include <sys/types.h>
 #include <sys/socket.h>

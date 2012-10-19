@@ -1,8 +1,10 @@
-/* 
- * File:   cost_model_history.h
- * Author: xuyiqi
+/*
+ * (C) 2009-2012 Florida International University
  *
- * Created on July 21, 2011, 11:55 AM
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
 
 #ifndef COST_MODEL_HISTORY_H

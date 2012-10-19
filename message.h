@@ -1,8 +1,10 @@
 /*
- * message.h
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Oct 4, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
 
 #ifndef MESSAGE_H_

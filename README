@@ -32,22 +32,29 @@ Requirements
 Changes
 ====================
 * Changes from v1.0 (to be completed)
-  WRF, iozone support (and many others such as metarates)
+  WRF, iozone support (and many others such as metarates, mpi_io_test)
+  
 * Changes from v0.9
   Implemented VFS support, i.e. concurrency on single socket. Removed MPI-IO dependency (1:1 mapping between processes and sockets). Virtually this can support any kinds of benchmarks which goes through VFS on a mount point.
+  
 * Changes from v0.8
   Implemented Full Meta data support (no scheduling yet), tested over multi-md-test.c
+  
 * Changes from v0.7
   Implemented Two-level(SARC-AVATAR) scheduling
+  
 * Changes from v0.6
   Eliminated double buffering
-  Implemnted dynamic memory allocation
+  Implemented dynamic memory allocation
+  
 * Changes from v0.5
   Implemented double buffering
   Implemented non-work-conserving schedulers
   Implemented Virtual-DSFQ
   Fixed read / write size calculation when receiving a request not explicitly stating how much it will give the server
   Added support for SMALL_IO
+  Supported NPB/BTIO
+  
 * Changes from v0.4
   Added support for algorithm paramter sections in the config file
   Implemented SFQD(READ)

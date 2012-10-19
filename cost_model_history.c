@@ -1,3 +1,12 @@
+/*
+ * (C) 2009-2012 Florida International University
+ *
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
+ */
+
 #include "proxy2.h"
 #include "config.h"
 #include <stdlib.h>

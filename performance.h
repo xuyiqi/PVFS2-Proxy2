@@ -1,9 +1,12 @@
 /*
- * performance.h
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Sep 1, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 
 #ifndef PERFORMANCE_H_
 #define PERFORMANCE_H_

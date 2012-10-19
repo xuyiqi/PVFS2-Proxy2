@@ -1,9 +1,12 @@
 /*
- * scheduler_2LSFQD.c
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Nov 15, 2011
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 #include <limits.h>
 #include <math.h>
 #include <sys/types.h>

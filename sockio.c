@@ -1,8 +1,10 @@
 /*
- * sockio.c
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Mar 22, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  *
  *  This file is partially copied from PVFS2 source code - BMI/tcp implementation.
  */

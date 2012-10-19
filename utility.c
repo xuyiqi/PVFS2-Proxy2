@@ -1,9 +1,12 @@
 /*
- * utility.c
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Mar 22, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 #define START_THRESHOLD 10
 #include <sys/types.h>
 #include <sys/socket.h>

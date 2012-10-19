@@ -1,9 +1,12 @@
 /*
- * proxy1.h
+ * (C) 2009-2012 Florida International University
  *
- *  Created on: Mar 22, 2010
- *      Author: yiqi
+ * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
+ *
+ * See COPYING in top-level directory.
+ *
  */
+
 #include <sys/socket.h>
 #include <assert.h>
 #include "llist.h"
