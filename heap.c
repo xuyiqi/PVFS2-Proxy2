@@ -1,12 +1,3 @@
-/*
- * (C) 2009-2012 Florida International University
- *
- * Laboratory of Virtualized Systems, Infrastructure and Applications (VISA)
- *
- * See COPYING in top-level directory.
- *
- */
-
 /* heap.h -- Binomial Heaps
  *
  * Copyright (c) 2008, Bjoern B. Brandenburg <bbb [at] cs.unc.edu>
