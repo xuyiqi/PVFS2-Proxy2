@@ -119,7 +119,7 @@ int is_meta(enum PVFS_server_op operation)
 		 operation == PVFS_SERV_STATFS
 	)
 	{
-		fprintf(stderr, "%s is meta\n", ops[operation]);
+		//fprintf(stderr, "%s is meta\n", ops[operation]);
 		return 1;
 	}
 	else
@@ -156,20 +156,21 @@ struct request_state * update_socket_current_send(int index)
 	int counter_index = s_pool.socket_state_list[index].counter_socket_index;
 	if (s_pool.socket_state_list[index].current_send_item == NULL)//only if there is no work going on for this socket
 	{
-		fprintf(stderr,"updating send item for socket %i\n", index);
+		//fprintf(stderr,"updating send item for socket %i\n", index);
 		struct request_state * rs = PINT_llist_search(
 				s_pool.socket_state_list[counter_index].req_state_data,
 				(void *)NULL,
 				list_req_state_buffer_nonempty_nonlock_comp);
 		if (rs == NULL)
 		{
-			fprintf(stderr,"nothing is found on the socket state list to be sent!\n");
+			//fprintf(stderr,"nothing is found on the socket state list to be sent!\n");
 			return NULL;
 		}
 		s_pool.socket_state_list[index].current_send_item = rs;
-		fprintf(stderr,"item found! size %i op %i\n",
+		/*fprintf(stderr,"item found! size %i op %i\n",
 				s_pool.socket_state_list[index].current_send_item->buffer_size,
 				s_pool.socket_state_list[index].current_send_item->op);
+		*/
 		return rs;
 	}
 	//otherwise, let the proxy do its job forwarding data
@@ -233,7 +234,7 @@ int check_request(int index)
 	if (ret!=eheader)
 	{
 		fprintf(stderr,"Error getting bmi header for request. Expected: %i, got:%i\n",eheader, ret);
-		perror("req error");
+		//s_pool.socket_state_list[index].incomplete_mode = 1;
 	}
 	else
 	{
@@ -256,7 +257,7 @@ int check_request(int index)
 			new_rs->locked = 0;
 			new_rs->pvfs_io_type = -1;
 			new_rs->meta_response = 0;
-			fprintf(stderr,"new request on socket %i, tag %i\n", index, tag);
+			//fprintf(stderr,"new request on socket %i, tag %i\n", index, tag);
 		}
 		else
 		{
@@ -268,7 +269,7 @@ int check_request(int index)
 			}
 			else
 			{
-				fprintf(stderr,"old request not found on %i, tag %i\n", index, tag);
+				//fprintf(stderr,"old request not found on %i, tag %i\n", index, tag);
 			}
 		}
 		struct request_state * old_rs = find_request(counter_index, tag, 1);
@@ -321,7 +322,7 @@ int check_request(int index)
 				counter_rs->last_tag = -1;
 				counter_rs->current_tag = tag;
 
-				fprintf(stderr,"tag %i op %i\n",tag, operation);
+				//fprintf(stderr,"tag %i op %i\n",tag, operation);
 				if ( operation == PVFS_SERV_IO || operation == PVFS_SERV_SMALL_IO )
 				{
 					int io_type;
@@ -334,13 +335,13 @@ int check_request(int index)
 					new_rs->pvfs_io_type = io_type;
 					counter_rs->pvfs_io_type = io_type;
 
-					struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
+					//struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
 
 					//int this_size=logical_to_physical_size_dparam(dist);
 
 					if (scheduler_on && ( io_type == PVFS_IO_WRITE || small == 1 ))
 					{
-						//fprintf(stderr,"W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W\n");
+						fprintf(stderr,"W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W\n");
 						struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
 						int this_size = logical_to_physical_size_dparam(dist);
 
@@ -396,11 +397,14 @@ int check_request(int index)
 							//delayed, normal scheduler
 							new_rs->locked = 1;// is set by the scheduler?
 						}
+						free(pi);
+						free(dist->dist_name);
+						free(dist);
 					}
 					else if (scheduler_on && io_type==PVFS_IO_READ )
 
 					{
-						//fprintf(stderr,"R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R\n");
+						fprintf(stderr,"R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R\n");
 
 						struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
 						int this_size=dist->aggregate_size/dist->total_server_number;
@@ -468,6 +472,9 @@ int check_request(int index)
 							//delayed, normal scheduler
 							new_rs->locked = 1;
 						}
+						free(pi);
+						free(dist->dist_name);
+						free(dist);
 					}//end read
 				}//end io/smallio
 				else if (scheduler_on == 1 && static_methods[scheduler_index]->sch_accept_meta == 1
@@ -476,8 +483,8 @@ int check_request(int index)
 					//meta data and getconfig stuff
 
 				{
-					fprintf(stderr,"%s REQUEST OPERATION %s from socket %i (ip %s) tag %i\n",
-							log_prefix, ops[operation], read_socket, s_pool.socket_state_list[index].ip, tag);
+					//fprintf(stderr,"%s REQUEST OPERATION %s from socket %i (ip %s) tag %i\n",
+					//		log_prefix, ops[operation], read_socket, s_pool.socket_state_list[index].ip, tag);
 					//now we interact with the queue, and get feedback from the scheduler by checking
 					//if it supports meta-operation (sch_accept_meta)
 
@@ -524,12 +531,14 @@ int check_request(int index)
 					{
 						new_rs->locked = 1;
 					}
+					free(pi);
+					free(meta);
 				}
 				else //we still need to protect from mgmt set param message failures,
 					//because the meta data service might not be able to recognize it
 				{
 					//guard against those that we don't understand....
-					fprintf(stderr, "Unscheduled operation %s, length %i\n", ops[operation], new_rs->buffer_size);
+					//fprintf(stderr, "Unscheduled operation %s, length %i\n", ops[operation], new_rs->buffer_size);
 				}
 				new_rs->config_tag = 0;
 				ret=1;
@@ -600,7 +609,7 @@ int check_response(int index)//peeking
 			{
 				new_response_rs = add_request_to_socket(index, tag);
 				new_response_rs->buffer = malloc( ( size + BMI_HEADER_LENGTH ) * sizeof( char ) );
-				//fprintf(stderr," address of new buffer from server:%i on %ith socket, %i\n", (int)s_pool.socket_state_list[index].buffer, index, s_pool.socket_state_list[index].socket);
+				fprintf(stderr,"new flow from item tag %i\n", tag);
 				new_response_rs->buffer_head = 0;
 				new_response_rs->buffer_tail = 0;
 				new_response_rs->buffer_size = size + BMI_HEADER_LENGTH;
@@ -615,7 +624,7 @@ int check_response(int index)//peeking
 				new_response_rs->locked = 0;
 				new_response_rs->original_request = response_rs->original_request;
 				new_response_rs->meta_response = 0;
-				fprintf(stderr, "new response on %i, tag %i\n", index, tag);
+				//fprintf(stderr, "new response on %i, tag %i\n", index, tag);
 			}
 			else
 			{
@@ -693,15 +702,16 @@ int check_response(int index)//peeking
 			{
 				s_pool.socket_state_list[index].incomplete_mode = 0;
 				long long operation = output_param(header2, 32, 4, "pvfs_operation", ops,40);
-				fprintf(stderr,"SERVER RESPONSE OP:%s(%i)\n", ops[operation], operation);
+				//fprintf(stderr,"SERVER RESPONSE OP:%s(%i)\n", ops[operation], operation);
 				response_rs->op = operation;
 				//fprintf(stderr,"RESPONSE OPERATION %s from %i\n", ops[operation], read_socket);
-				struct dist * dist;
+				struct dist * dist = NULL;
 				if (operation==PVFS_SERV_IO ||
 					operation==PVFS_SERV_WRITE_COMPLETION ||
 					operation==PVFS_SERV_SMALL_IO)
 				{
 					dist = dump_header(header2,RESPONSE,s_pool.socket_state_list[index].ip);
+					fprintf(stderr,"dist pointer is %i\n", dist);
 				}
 				else
 				{
@@ -710,10 +720,10 @@ int check_response(int index)//peeking
 					case PVFS_SERV_READDIR:
 					case PVFS_SERV_LISTATTR:
 					case PVFS_SERV_LOOKUP_PATH:
-						fprintf(stderr, "%s incurring more cost on response %i bytes\n", ops[operation], size);
+						//fprintf(stderr, "%s incurring more cost on response %i bytes\n", ops[operation], size);
 						break;
 					default:
-						fprintf(stderr,"%s has minimum cost on response\n", ops[operation]);
+						//fprintf(stderr,"%s has minimum cost on response\n", ops[operation]);
 						break;
 					}
 					response_rs->meta_response = 1;
@@ -734,12 +744,17 @@ int check_response(int index)//peeking
 
 					if (operation==PVFS_SERV_IO) //scheduler check is in the branch body
 					{
-						unsigned long long returned_size = output_param(header2, 36, 4, "IO request returned is ", NULL,0);
+						long long returned_size = output_param(header2, 36, 4, "IO request returned is ", NULL,0);
+						fprintf(stderr,"item %i IO response status: %i", tag ,returned_size);
 						returned_size = *(long long *)(header2+40);
+						fprintf(stderr," bstream size: %i\n", returned_size);
 						//if it returned zero...that would mean this I/O complete..work like write_completion....
 						//but we may need to adjust last_finish tag forward a little...
 
-						fprintf(stderr,"the response is a %i\n", response_rs->pvfs_io_type);
+						if (response_rs->pvfs_io_type!=PVFS_IO_READ)
+						{
+							fprintf(stderr,"the response is a write %i\n", response_rs->pvfs_io_type);
+						}
 						if (response_rs->pvfs_io_type==PVFS_IO_READ && scheduler_on == 1)
 						{
 							//fprintf(stderr,"total resp size is %i returned size is %llu, IO type is %i (operation returns %lli)\n",eheader,returned_size,s_pool.socket_state_list[index].pvfs_io_type,operation);
@@ -761,17 +776,25 @@ int check_response(int index)//peeking
 							 * current size reflects this server's share. //only implemented in SFQD
 							 * the task_size of an item should be changed inside
 							 * */
-							fprintf(stderr,"adjusting size\n");
+							//fprintf(stderr,"adjusting size\n");
 							if (current_size <= 0)
 									//eof returns -1;
 							{
 								fprintf(stderr,"warning!!!, passed EOF\n");
 								fprintf(stderr,"EOF already, dispatching new items......\n");
-								(*(static_methods[scheduler_index]->sch_current_size))(request_rs,0);
 
+								response_rs->last_flow = 1;
+
+								(*(static_methods[scheduler_index]->sch_current_size))(request_rs,0);
+								struct complete_message complete;
+								complete.complete_size=0;
+								complete.current_item= request_rs->current_item;
+
+								(*(static_methods[scheduler_index]->sch_update_on_request_completion))
+										((void*)&complete);
 								request_rs->check_response_completion = 1;
 								request_rs->last_completion = ret;
-								//fprintf(stderr,"[READ COMPLETE]\n");
+
 
 								int app_index = s_pool.socket_state_list[counter_index].app_index;
 								app_stats[app_index].completed_requests+=1;
@@ -800,7 +823,7 @@ int check_response(int index)//peeking
 								(*(static_methods[scheduler_index]->sch_get_scheduler_info))();
 								if (new_item==NULL)
 								{
-										fprintf(stderr, "no more jobs found, depth decreased...");
+										fprintf(stderr, "no more jobs found, depth decreased...\n");
 								}
 								else
 								{
@@ -899,7 +922,7 @@ int check_response(int index)//peeking
 						}
 
 						r.item=current_item;
-						fprintf(stderr,"dispatching because of write completion\n");
+						//fprintf(stderr,"dispatching because of write completion\n");
 						struct generic_queue_item* new_item = (*(static_methods[scheduler_index]->sch_dequeue))(r);
 						if (new_item==NULL)
 						{
@@ -943,7 +966,7 @@ int check_response(int index)//peeking
 						 * */
 					{
 						//like getting a write completion, you should also operate on the queue and dispatch the next
-						fprintf(stderr, "hola, I've completed my meta! %i %s, dispatch?\n", operation, ops[operation]);
+						//fprintf(stderr, "hola, I've completed my meta! %i %s, dispatch?\n", operation, ops[operation]);
 						//this is supposed to work like it received a write_completion response from the server.
 						//assuming that the scheduling is work-conserving and proxy-dispatching, the next item
 						//will have to be extracted and dispatched
@@ -982,9 +1005,13 @@ int check_response(int index)//peeking
 					}
 					else if (scheduler_on && !is_meta(operation) && !is_IO(operation))
 					{
-						fprintf(stderr, "seeing a non-io, non-meta op : %s, nothing is done on the socket\n", ops[operation]);
+						//fprintf(stderr, "seeing a non-io, non-meta op : %s, nothing is done on the socket\n", ops[operation]);
 					}
+
+
 				}//end normal responses (instead of a get_config)
+				if (dist!=NULL)
+					free(dist);
 			}//end peeking response header
 		}//end response (instead of data flow)
 	}//end successful bmi header read

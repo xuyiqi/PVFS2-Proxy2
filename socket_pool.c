@@ -103,7 +103,8 @@ void remove_socket_by_index(int socket_index)
 			exit(-1);
 		}
 		long tag = current_item->current_tag;
-		fprintf(stderr,"removing tag %i op %s\n", tag, ops[current_item->op]);
+		fprintf(stderr,"removing tag %i op %i (%s) - R/W %i \n",
+				tag, current_item->op, ops[current_item->op], current_item->pvfs_io_type);
 		queue = queue->next;
 		//the removal procedure will change the next pointer, so we keep it for the while loop
 		//just before removing
@@ -117,6 +118,16 @@ void remove_socket_by_index(int socket_index)
 		if (removed_item->buffer!=NULL)
 		{
 			free(removed_item->buffer);
+		}
+
+		if (removed_item->current_item)
+		{
+			if (removed_item->current_item->socket_data)
+				free(removed_item->current_item->socket_data);//si
+			if (removed_item->current_item->embedded_queue_item)
+				free(removed_item->current_item->embedded_queue_item);
+			if (removed_item->current_item)
+				free(removed_item->current_item);
 		}
 		free(removed_item);
 	}
@@ -387,7 +398,7 @@ struct request_state * create_counter_rs(struct request_state * original_rs, int
 	counter_rs->original_request = original_rs;
 	counter_rs->pvfs_io_type = original_rs->pvfs_io_type;
 	counter_rs->op = original_rs->op;//initial response to the request is always the same op code
-	fprintf(stderr,"original op is %i tag is %i\n", counter_rs->op, tag);
+	//fprintf(stderr,"original op is %i tag is %i\n", counter_rs->op, tag);
 	counter_rs->config_tag = 0;
 	counter_rs->locked = 0;
 	counter_rs->job_size = -1;

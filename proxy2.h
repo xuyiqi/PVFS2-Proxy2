@@ -42,7 +42,7 @@
 extern int  active_port;
 #define BACKLOG 256*100
 
-extern char *ops[40];
+extern char *ops[41];
 extern char *modes[3];
 extern char *encodings[3];
 extern int out_buffer_size;

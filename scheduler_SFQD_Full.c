@@ -217,13 +217,12 @@ int sfqdfull_current_size(struct request_state * original_rs, long long actual_d
 	//update expected receivables for current item!
 	long long ask_size= sfqdfull_item->aggregate_size;
 
-    int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr);
-    //fprintf(stderr,"current item adjusted to %i\n",my_shared_size);
+    int my_shared_size = get_my_share(strip_size, server_count, offset, ask_size, server_nr, actual_data_file_size);
+    fprintf(stderr,"item %i adjusted to %i (offset %i, datafile_size %i, asking %i, %i/%i)\n",
+    		sfqdfull_item->socket_tag,  my_shared_size, offset, actual_data_file_size, ask_size, server_nr, server_count);
     int temp = sfqdfull_item->task_size;
     sfqdfull_item->task_size = my_shared_size;
 
-
-    fprintf(stderr,"cost adjusted from %i to %i\n", temp, my_shared_size);
     return my_shared_size;
 
 }
@@ -242,7 +241,7 @@ int sfqdfull_get_finish_tag(int length, int weight, int start_tag,enum PVFS_serv
 			cost = DEFAULT_META_COST;
 		}
 
-		fprintf(stderr,"cost is %i\n", cost);
+		//fprintf(stderr,"cost is %i\n", cost);
 
 		if (weight*REDUCER>cost)
 		{
@@ -279,11 +278,11 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	switch (pi->op){
 	case PVFS_SERV_SMALL_IO:
 	case PVFS_SERV_IO:
-		fprintf(stderr, "IO type %s\n", ops[pi->op]);
+		//fprintf(stderr, "IO type %s\n", ops[pi->op]);
 		break;
 
 	default:
-		fprintf(stderr, "Meta type %s, code %i\n", ops[pi->op], pi->op);
+		//fprintf(stderr, "Meta type %s, code %i\n", ops[pi->op], pi->op);
 
 
 		break;
@@ -319,7 +318,7 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	sfqdfull_last_finish_tags[app_index]=finish_tag;
 
 	struct generic_queue_item * generic_item =  (struct generic_queue_item * )malloc(sizeof(struct generic_queue_item));
-	struct sfqd_queue_item * item = (struct sfqd_queue_item *)(malloc(sizeof(struct sfqd_queue_item)));
+	struct sfqdfull_queue_item * item = (struct sfqdfull_queue_item *)(malloc(sizeof(struct sfqdfull_queue_item)));
 	generic_item->embedded_queue_item=item;
 
 	item->queuedtime = now;
@@ -370,10 +369,15 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 
 	generic_item->socket_data=si;
 
-	fprintf(stderr,"%s %s enqueuing tag %i app%i, start %i end %i\n",
+	/*fprintf(stderr,"%s %s enqueuing tag %i app%i, start %i end %i\n",
 			bptr, log_prefix, item->socket_tag, item->app_index,
 			start_tag, finish_tag);
+*/
 
+	if (pi->op ==PVFS_SERV_SMALL_IO || pi->op == PVFS_SERV_IO)
+	{
+		fprintf(stderr,"item %i enqueuing IO %i start %i length %i\n", item->socket_tag, io_type, pi->req_offset,length);
+	}
 
 	int dispatched=0;
 	if (sfqdfull_current_depth<sfqdfull_depth)//heap_empty(heap_queue))
@@ -407,7 +411,7 @@ int sfqdfull_update_on_request_completion(void* arg)
 	struct generic_queue_item * current_item = (complete->current_item);
 
 	struct sfqdfull_queue_item * sfqdfull_item = (struct sfqdfull_queue_item * )(current_item->embedded_queue_item);
-	fprintf(stderr,"completed size: %i\n", complete->complete_size);
+	//fprintf(stderr,"completed size: %i\n", complete->complete_size);
 	if (complete->complete_size==-1)
 	{
 		//this is a skip flag for response messages
@@ -421,18 +425,22 @@ int sfqdfull_update_on_request_completion(void* arg)
 
 
 	//struct proxy_message * request = (struct proxy_message)(complete->proxy_message);
-	fprintf(stderr,"complete size from %i",sfqdfull_item->got_size);
+	//fprintf(stderr,"complete size from %i",sfqdfull_item->got_size);
 	sfqdfull_item->got_size+=(complete->complete_size);
-	fprintf(stderr,"=%i+%i\n",complete->complete_size,sfqdfull_item->got_size);
+	fprintf(stderr,"item %i: %i after incrementing %i\n", sfqdfull_item->socket_tag, complete->complete_size,sfqdfull_item->got_size);
 
 	if (sfqdfull_item->task_size==sfqdfull_item->got_size)
 	{
 		struct timeval diff;
 		get_time_diff(&(sfqdfull_item->dispatchtime), &diff);
-		fprintf(depthtrack, "response time of class %i: %i ms\n", sfqdfull_item->app_index, (int)(diff.tv_sec*1000+diff.tv_usec/1000));
+		//fprintf(depthtrack, "response time of class %i: %i ms\n", sfqdfull_item->app_index, (int)(diff.tv_sec*1000+diff.tv_usec/1000));
 		average_resp_time[sfqdfull_item->app_index]+=(diff.tv_sec*1000+diff.tv_usec/1000);
 		//finished[sfqdfull_item->app_index]++;
 		app_stats[sfqdfull_item->app_index].completed_requests+=1;
+		if (sfqdfull_item->task_size==0)
+		{
+			return 1;
+		}
 		return sfqdfull_item->got_size;
 	}
 	else if (sfqdfull_item->task_size < sfqdfull_item->got_size)
@@ -506,13 +514,13 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 		}
 
 		int i;
-		fprintf(stderr,"%s %s ",bptr,log_prefix);
+		/*fprintf(stderr,"%s %s ",bptr,log_prefix);
 		for (i=0;i<num_apps;i++)
 		{
 			fprintf(stderr,"app%i:%i,", i, sfqdfull_list_queue_count[i]);
 		}
 		fprintf(stderr,"\n");
-
+		*/
 		next  = (struct generic_queue_item *)PINT_llist_head(sfqdfull_llist_queue);
 		if (next!=NULL)
 		{
@@ -524,10 +532,10 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 			next_queue_item = (struct sfqdfull_queue_item *)(next_item->embedded_queue_item);
 			sfqdfull_list_queue_count[next_queue_item->app_index]--;
 			found=1;
-			fprintf(stderr,"dispatching \n");
+			//fprintf(stderr,"dispatching \n");
 			int app_index=next_queue_item->app_index;
 			if (next_queue_item->app_index==1 && sfqdfull_list_queue_count[0]==0){
-				fprintf(stderr,"%s %s, ********************************************** warning app 0 has no item left in the queue\n", bptr, log_prefix);
+				//fprintf(stderr,"%s %s, ********************************************** warning app 0 has no item left in the queue\n", bptr, log_prefix);
 
 			}
 		}
@@ -554,8 +562,8 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 		gettimeofday(&dispatch_time, 0);
 		next_queue_item->dispatchtime = dispatch_time;
 		double ratio = ((float)(app_stats[0].dispatched_requests))/((float)app_stats[1].dispatched_requests);
-		fprintf(stderr,"%s %s $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ instant ratio is %d/%d=%f\n",
-				bptr, log_prefix, app_stats[0].dispatched_requests, app_stats[1].dispatched_requests, ratio);
+		//fprintf(stderr,"%s %s $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ instant ratio is %d/%d=%f\n",
+		//		bptr, log_prefix, app_stats[0].dispatched_requests, app_stats[1].dispatched_requests, ratio);
 		fprintf(stderr, " scheduler depth unchanged at %i\n",sfqdfull_current_depth);
 		return next_item;
 	}

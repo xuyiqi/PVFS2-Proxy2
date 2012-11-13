@@ -246,6 +246,8 @@ struct dist* dump_IO_Request(unsigned char* buffer, int IO_size, int offset, int
 		padding %=8;
 		offset+=length;
 
+		free(variable_stripe);
+
 	} else if (!strcmp(dist_name, "simple_stripe"))
 	{
 		length=8;
@@ -285,12 +287,12 @@ struct dist* dump_IO_Request(unsigned char* buffer, int IO_size, int offset, int
 
 	//fprintf(stderr,"    offset:%lli,%lli\n", internal_offset,internal_offset2);
 
-	offset+=((num_nested_req+1)*80);
-	/*for (i=0;i<num_nested_req+1;i++)
+	//offset+=((num_nested_req+1)*80);
+	for (i=0;i<num_nested_req+1;i++)
 	{
 		///io/desc/pint-req-encode.h 104, 56
 		//proto/pvfs2-req-proto.h
-		//hexdump(buffer+offset,80,D_CALL);
+
 		length=8;
 		long long internal_offset = output_param(buffer, offset, length , "offset",NULL,0);
 		fprintf(stderr,"    offset:%lli\n", internal_offset);
@@ -354,7 +356,7 @@ struct dist* dump_IO_Request(unsigned char* buffer, int IO_size, int offset, int
 		offset+=length;
 
 	}
-*/
+
 
 	length=8;
 
@@ -508,6 +510,7 @@ void dump_string(char* buffer, int *offset)
 	{ padding = 8 - left_over;}
 	//fprintf(stderr,"PADDING is %i bytes long\n", padding);
 	*offset+=padding;
+	free(temp_string);
 
 }
 struct attr_plus
@@ -565,8 +568,8 @@ void dump_attribute_plus(char* buffer, int* offset, struct attr_plus plus)
 	int length;
 	int create_ds_type = plus.create_ds_type;
 	int create_attr_mask = plus.attr_mask;
-	fprintf(stderr,"! %X & %X == %X \n", create_attr_mask, PVFS_ATTR_META_UNSTUFFED, !(create_attr_mask & PVFS_ATTR_META_UNSTUFFED));
-	fprintf(stderr,"create_ds_type = %i\n", create_ds_type);
+	//fprintf(stderr,"! %X & %X == %X \n", create_attr_mask, PVFS_ATTR_META_UNSTUFFED, !(create_attr_mask & PVFS_ATTR_META_UNSTUFFED));
+	//fprintf(stderr,"create_ds_type = %i\n", create_ds_type);
 	/*
 	//additional attributes depends on the following conditions:*/
 	if ( create_ds_type == PVFS_TYPE_METAFILE && ! (create_attr_mask & PVFS_ATTR_META_UNSTUFFED))
@@ -574,16 +577,16 @@ void dump_attribute_plus(char* buffer, int* offset, struct attr_plus plus)
 		length=4;
 		int create_stuffed_size = output_param(buffer, *offset, length, "stuffed size", NULL,0);
 		*offset+=(length+4);//padding
-		fprintf(stderr,"stuffed size is %lli\n", create_stuffed_size);
+		//fprintf(stderr,"stuffed size is %lli\n", create_stuffed_size);
 	}
 	if ( create_attr_mask & PVFS_ATTR_META_DIST)
 	{
-		fprintf(stderr,"dumping meta_dist string\n");
+		//fprintf(stderr,"dumping meta_dist string\n");
 		dump_string(buffer, offset);
 		length=8;
 
 		long long create_stripe_size = output_param(buffer, *offset, length, "stripe size", NULL,0);
-		fprintf(stderr,"stripe size %lli\n", create_stripe_size);
+		//fprintf(stderr,"stripe size %lli\n", create_stripe_size);
 		*offset+=length;
 	}
 	if ( create_attr_mask & PVFS_ATTR_META_DFILES )
@@ -591,26 +594,26 @@ void dump_attribute_plus(char* buffer, int* offset, struct attr_plus plus)
 		length=4;
 		int create_dfile_count = output_param(buffer, *offset, length, "dfile count", NULL,0);
 		*offset+=(length+4);//padding
-		fprintf(stderr,"create dfile count is %i \n", create_dfile_count);
+		//fprintf(stderr,"create dfile count is %i \n", create_dfile_count);
 		int j;
 		for (j=0; j< create_dfile_count; j++)
 		{
 			length=8;
 			long long create_handle = output_param(buffer, *offset, length, "handle", NULL,0);
-			fprintf(stderr, "handle %lli\n", create_handle);
+			//fprintf(stderr, "handle %lli\n", create_handle);
 			*offset+=length;
 		}
 		length=8;
 		long long create_hint = output_param(buffer, *offset, length, "hint", NULL,0);
 		*offset+=length;
-		fprintf(stderr,"create hint %lli\n", create_hint);
+		//fprintf(stderr,"create hint %lli\n", create_hint);
 	}
 	if ( create_attr_mask & PVFS_ATTR_DATA_SIZE)
 	{
 		length=8;
 		long long create_data_size = output_param(buffer, *offset, length, "data size", NULL,0);
 		*offset+=length;
-		fprintf(stderr,"create data size %lli\n", create_data_size);
+		//fprintf(stderr,"create data size %lli\n", create_data_size);
 
 	}
 	if ( create_attr_mask & PVFS_ATTR_SYMLNK_TARGET)
@@ -618,8 +621,8 @@ void dump_attribute_plus(char* buffer, int* offset, struct attr_plus plus)
 		length=4;
 		long long create_path_length = output_param(buffer, *offset, length, "path length", NULL,0);
 		*offset+=(length+4);//padding
-		fprintf(stderr,"path length %lli\n", create_path_length);
-		fprintf(stderr,"dumping symlink string\n");
+		//fprintf(stderr,"path length %lli\n", create_path_length);
+		//fprintf(stderr,"dumping symlink string\n");
 		dump_string(buffer, offset);
 
 	}
@@ -629,17 +632,17 @@ void dump_attribute_plus(char* buffer, int* offset, struct attr_plus plus)
 		length=8;
 		long long create_dirent_count = output_param(buffer, *offset, length, "dirent count", NULL,0);
 		*offset+=length;
-		fprintf(stderr,"dirent_count %lli\n", create_dirent_count);
+		//fprintf(stderr,"dirent_count %lli\n", create_dirent_count);
 		length=4;
 		int create_dist_name_len = output_param(buffer, *offset, length, "dist name len", NULL,0);
 		*offset+=(length+4);//padding
-		fprintf(stderr,"name len %lli\n", create_dist_name_len);
-		fprintf(stderr,"dumping dirent string1\n");
+		//fprintf(stderr,"name len %lli\n", create_dist_name_len);
+		//fprintf(stderr,"dumping dirent string1\n");
 		dump_string(buffer, offset);
 		length=4;
 		int create_dist_param_len = output_param(buffer, *offset, length, "dist param len", NULL,0);
 		*offset+=(length+4);//padding
-		fprintf(stderr,"dumping dirent string2\n");
+		//fprintf(stderr,"dumping dirent string2\n");
 		dump_string(buffer, offset);
 		length=4;
 		int create_dfile_count = output_param(buffer, *offset, length, "data file count", NULL,0);
@@ -708,21 +711,21 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 	offset+=12;
 	length=4;//hint_count 4
 	long long hint_count = output_param(buffer, offset, length, "hint count", NULL,0);
-	fprintf(stderr,"meta hint_count:%lli\n", hint_count);
+	//fprintf(stderr,"meta hint_count:%lli\n", hint_count);
 	int i=0;
 	for (i=0;i<hint_count;i++)
 	{
 		offset+=length;
 		length=4;//hint_type 4
 		long long hint_type = output_param(buffer, offset, length, "hint type", NULL,0);
-		fprintf(stderr,"meta hint_type:%lli\n", hint_type);
+		//fprintf(stderr,"meta hint_type:%lli\n", hint_type);
 		switch (hint_type)
 		{
 		case PINT_HINT_HANDLE:
 			offset+=length;
 			length=8;//hint_length 8
 			long long hint_handle = output_param(buffer, offset, length, "hint handle", NULL,0);
-			fprintf(stderr,"meta hint_handle:%lli\n", hint_handle);
+			//fprintf(stderr,"meta hint_handle:%lli\n", hint_handle);
 			break;
 		case PINT_HINT_UNKNOWN:
 		case PINT_HINT_REQUEST_ID:
@@ -736,7 +739,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 			offset+=length;
 			length=4;//hint_length 4
 			long long hint_other = output_param(buffer, offset, length, "hint other", NULL,0);
-			fprintf(stderr,"meta hint_other:%lli\n", hint_other);
+			//fprintf(stderr,"meta hint_other:%lli\n", hint_other);
 			break;
 		//hint type 4
 		//hint depending on the hint type (if ==handle[3]), handle[8]
@@ -841,18 +844,18 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		length=4;
 		int create_num_dfiles_req = output_param(buffer, offset, length, "num dfiles req", NULL,0);
 		offset+=length;
-		fprintf(stderr,"ndfiles req %i\n", create_num_dfiles_req);
+		//fprintf(stderr,"ndfiles req %i\n", create_num_dfiles_req);
 		length=4;
 		int create_layout_algo = output_param(buffer, offset, length, "layout algo", NULL,0);
 		offset+=(length+4);
-		fprintf(stderr,"layout algo %i\n", create_layout_algo);
+		//fprintf(stderr,"layout algo %i\n", create_layout_algo);
 		length=4;
 		int create_server_list_count = output_param(buffer, offset, length, "server list", NULL,0);
 		offset+=(length+4);
-		fprintf(stderr,"server list count %i\n", create_server_list_count);
+		//fprintf(stderr,"server list count %i\n", create_server_list_count);
 		if (create_layout_algo == PVFS_SYS_LAYOUT_LIST)
 		{
-			fprintf(stderr, "dumping layout string\n");
+			//fprintf(stderr, "dumping layout string\n");
 			dump_string(buffer, &offset);
 		}
 
@@ -957,7 +960,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		length=4;
 		int mkdir_fs_id = output_param(buffer,
 				offset, length, "mkdir fs id", NULL,0);
-		fprintf(stderr, "mkdir fs id %i\n", mkdir_fs_id);
+		//fprintf(stderr, "mkdir fs id %i\n", mkdir_fs_id);
 		offset+=(length+4);//padding
 		struct attr_plus p = dump_attribute(buffer,&offset);
 		dump_attribute_plus(buffer, &offset, p);
@@ -967,7 +970,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		int mkdir_extent_count = output_param(buffer,
 				offset, length, "mkdir extent count", NULL,0);
 		offset+=length;
-		fprintf(stderr,"mkdir extent count %i\n",mkdir_extent_count);
+		//fprintf(stderr,"mkdir extent count %i\n",mkdir_extent_count);
 		/*int k;
 		for (k=0;k<mkdir_extent_count;k++)
 		{
@@ -1085,7 +1088,7 @@ struct dist* dump_header(char* buffer, enum msg_type type, char* source)
 	//	if (mnr==0xcabf)
 		{
 				//dump_IO(buffer, size);
-				return 0;
+				return NULL;
 		}
 	}
 
@@ -1134,6 +1137,7 @@ struct dist* dump_header(char* buffer, enum msg_type type, char* source)
 			dist->aggregate_size=dump_SMALL_IO_Completion(buffer, size,offset);
 			return dist;
 		}
+		return NULL;
 	}
 	if (type==REQUEST)
 	{
@@ -1196,6 +1200,8 @@ struct dist* dump_header(char* buffer, enum msg_type type, char* source)
 			offset+=length;
 			return dump_IO_Request(buffer, size, offset,small);//hints, distribution, etc
 		}
+		return NULL;
 	}
+	return NULL;
 
 }

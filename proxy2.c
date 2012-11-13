@@ -150,10 +150,11 @@ void prepare_events()
 
 			if (s_pool.socket_state_list[i].current_send_item!= NULL)
 			{
-				fprintf(stderr,"send item exists with head %i tail %i size %i\n",
+				/*fprintf(stderr,"send item exists with head %i tail %i size %i\n",
 						s_pool.socket_state_list[i].current_send_item->buffer_head,
 						s_pool.socket_state_list[i].current_send_item->buffer_tail,
 						s_pool.socket_state_list[i].current_send_item->buffer_size);
+				*/
 				/*assert(s_pool.socket_state_list[i].current_send_item->buffer_head!=
 						s_pool.socket_state_list[i].current_send_item->buffer_tail);*/
 				//the above assertion is not necessary, because we're writing and the buffer has not gained new contents
@@ -270,7 +271,7 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 	int client_c = 0;
 	item_removal++;
 
-	fprintf(stderr, "cleaning a %s of tag %i on socket %i/%i: ", type, tag, i, counter_index);
+	//fprintf(stderr, "cleaning a %s of tag %i on socket %i/%i: ", type, tag, i, counter_index);
 
 	removed_rs = (struct request_state*)PINT_llist_rem(
 			s_pool.socket_state_list[i].req_state_data,
@@ -287,6 +288,15 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 		removed_rs->buffer_tail = -2;
 		removed_rs->buffer_size = -2;
 
+		if (removed_rs->current_item)
+		{
+			if (removed_rs->current_item->socket_data)
+				free(removed_rs->current_item->socket_data);//si
+			if (removed_rs->current_item->embedded_queue_item)
+				free(removed_rs->current_item->embedded_queue_item);
+			if (removed_rs->current_item)
+				free(removed_rs->current_item);
+		}
 		free(removed_rs);
 		removed_rs =  (struct request_state*)PINT_llist_rem(
 				s_pool.socket_state_list[i].req_state_data,
@@ -308,6 +318,16 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 		removed_rs->buffer_head = -2;
 		removed_rs->buffer_tail = -2;
 		removed_rs->buffer_size = -2;
+		if (removed_rs->current_item)
+		{
+			if (removed_rs->current_item->socket_data)
+				free(removed_rs->current_item->socket_data);//si
+			if (removed_rs->current_item->embedded_queue_item)
+				free(removed_rs->current_item->embedded_queue_item);
+			if (removed_rs->current_item)
+				free(removed_rs->current_item);
+		}
+		//pi should be freed after enqueue!
 
 		free(removed_rs);
 		removed_rs =  (struct request_state*)PINT_llist_rem(
@@ -316,7 +336,9 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 				list_req_state_comp_curr);
 		server_c++;
 	}
-	fprintf(stderr, "%i server messages freed, %i items removed so far\n", server_c, item_removal);}
+	fprintf(stderr, "%i server messages freed, %i items removed so far\n", server_c, item_removal);
+
+}
 
 int main(int argc, char **argv)
 {
@@ -372,7 +394,7 @@ int main(int argc, char **argv)
         if (num_poll>0)
         {
         	int i;
-            fprintf(stderr,"%i detected\n", num_poll);
+            //fprintf(stderr,"%i detected\n", num_poll);
             for (i=0;i<s_pool.pool_size;i++)//iterate through the whole socket pool for returned events
             {
                 if (process==num_poll)
@@ -408,12 +430,12 @@ int main(int argc, char **argv)
 
                         	if ( s_pool.socket_state_list[i].source == SERVER )
 							{
-                        		fprintf(stderr,"checking response on socket %i\n", i);
+                        		//fprintf(stderr,"checking response on socket %i\n", i);
                         		check_stat=check_response(i);
 							}
                         	else
                         	{
-                        		fprintf(stderr,"checking request on socket %i\n", i);
+                        		//fprintf(stderr,"checking request on socket %i\n", i);
                         		check_stat=check_request(i);
                         	}
 							if (check_stat<0)
@@ -546,7 +568,7 @@ int main(int argc, char **argv)
 							{
 								current_receive_item->buffer_tail+=got_size;
 								current_receive_item->completed_size+=got_size;
-								fprintf(stderr, "received data size %i on socket %i\n", got_size, i);
+								//fprintf(stderr, "received data size %i on socket %i\n", got_size, i);
 							}
 						}
 						else
@@ -616,7 +638,7 @@ int main(int argc, char **argv)
 								cmsg.current_item=current_item;
 								int ret = (*(static_methods[scheduler_index]->sch_update_on_request_completion))((void*)&cmsg);
 								//return value is the whole I/O request size
-								fprintf(stderr,"flow returning %i\n",ret);
+								//fprintf(stderr,"flow returning %i\n",ret);
 								if (ret>0 && static_methods[scheduler_index]->sch_self_dispatch==0)
 								{
 									s_pool.socket_state_list[i].current_receive_item->last_flow = 1;
@@ -778,9 +800,10 @@ int main(int argc, char **argv)
                         }
                         else
                         {
-                        	fprintf(stderr,"sent %i bytes on socket %i, head %i, tail %i, size %i\n",
+                        	/*fprintf(stderr,"sent %i bytes on socket %i, head %i, tail %i, size %i\n",
                         			sent_size, i, write_rs->buffer_head, write_rs->buffer_tail, write_rs->buffer_size);
-                            //fprintf(stderr,"#Sent %i bytes to %i!\n",sent_size, s_pool.poll_list[i].fd);
+                            */
+                        	//fprintf(stderr,"#Sent %i bytes to %i!\n",sent_size, s_pool.poll_list[i].fd);
                             write_rs->buffer_head += sent_size;//decrease the buffer size by the amount we have successfully sent
                             //s_pool.socket_state_list[i].finished+=sent_size;
                             if ( ready_size > sent_size )

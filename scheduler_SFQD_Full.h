@@ -42,7 +42,7 @@ struct sfqdfull_queue_item
 	int data_socket;
 	int request_port;
 	int request_socket_index;
-	int data_file_size;
+	long long data_file_size;
 	int strip_size;
 	int server_nr;
 	long long file_offset;
@@ -63,9 +63,6 @@ struct sfqdfull_queue_item
 	struct timeval deadline;	//for edf queue
 	struct timeval queuedtime;	//for waiting time calculation
 	struct timeval dispatchtime; // for response time feedback
-
-
-
 };
 
 extern FILE* depthtrack;

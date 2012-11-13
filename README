@@ -31,8 +31,10 @@ Requirements
 
 Changes
 ====================
-* Changes from v1.0 (to be completed)
+* Changes from v1.0
   WRF, iozone support (and many others such as metarates, mpi_io_test)
+  Fixed memory leaking
+  Fixed EOF bug
   
 * Changes from v0.9
   Implemented VFS support, i.e. concurrency on single socket. Removed MPI-IO dependency (1:1 mapping between processes and sockets). Virtually this can support any kinds of benchmarks which goes through VFS on a mount point.
