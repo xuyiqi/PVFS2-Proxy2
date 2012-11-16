@@ -414,9 +414,9 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 				list_req_state_comp_curr);
 		server_c++;
 	}
-	char ttlsvctime[20];
+	/*char ttlsvctime[20];
 	get_time_string(&total_service_time, ttlsvctime);
-	/*fprintf(stderr, "%i server messages freed, %i items removed so far, SVC Time is %s\n",
+	fprintf(stderr, "%i server messages freed, %i items removed so far, SVC Time is %s\n",
 			server_c, item_removal, ttlsvctime);*/
 
 }
@@ -465,7 +465,7 @@ int main(int argc, char **argv)
         //fprintf(stderr,"polling\n");
 
 
-    	char this_rt[20] = "no time";
+/*    	char this_rt[20] = "no time";
     	char this_st[20] = "no time";
 
     	char this_pcall[20];
@@ -474,23 +474,23 @@ int main(int argc, char **argv)
     	char prepare[20];
 
 		struct timeval poll_start_time;
-		gettimeofday(&poll_start_time, 0);
+		gettimeofday(&poll_start_time, 0);*/
 
     	prepare_events();
 
         //fprintf(stderr,"before polling...size %i ",s_pool.pool_size);
         //print_socket_pool();
 
-		struct timeval poll_start_time2;
+/*		struct timeval poll_start_time2;
 		gettimeofday(&poll_start_time2, 0);
 
 		struct timeval this_prepare_time;
 		timersub( &poll_start_time2, &poll_start_time, &this_prepare_time );
-		timeradd( &this_prepare_time, &total_prepare_time, &total_prepare_time );
+		timeradd( &this_prepare_time, &total_prepare_time, &total_prepare_time );*/
 
         int num_poll=poll(s_pool.poll_list,s_pool.pool_size,poll_delay);
 
-        struct timeval process_start_time;
+/*        struct timeval process_start_time;
 		gettimeofday(&process_start_time, 0);
 
 		struct timeval this_pcall_time;
@@ -504,7 +504,7 @@ int main(int argc, char **argv)
 
 
 
-/*    	fprintf(stderr,"this pcall time is %s, this prepare time is %s\n",
+    	fprintf(stderr,"this pcall time is %s, this prepare time is %s\n",
     			this_pcall, this_prepare);
     	fprintf(stderr,"total pcall time is %s, total prepare time is %s\n",
     	    	pcall, prepare);*/
@@ -632,15 +632,15 @@ int main(int argc, char **argv)
 							recv_restart:
 							errno = 0;
 
-	                        struct timeval s1, s2, s3;
-	                        gettimeofday(&s1,0);
+/*	                        struct timeval s1, s2, s3;
+	                        gettimeofday(&s1,0);*/
 
 							got_size = recv( read_socket, buffer, recv_size, MSG_DONTWAIT );
-	                        gettimeofday(&s2,0);
+/*	                        gettimeofday(&s2,0);
 	                        timersub(&s2, &s1, &s3);
 
 	                        timeradd(&s3, &total_receive_time, &total_receive_time);
-	                        get_time_string(&s3, this_rt);
+	                        get_time_string(&s3, this_rt);*/
 
 							//fprintf(stderr,"#Got size:%i\n",got_size);
 							if (got_size == -1 && errno!=EINTR && errno!=EAGAIN || got_size==0)
@@ -926,15 +926,15 @@ int main(int argc, char **argv)
                     {
                         char * ready_buffer = write_rs->buffer + write_rs->buffer_head;//reader's buffer
 
-                        struct timeval s1, s2, s3;
-                        gettimeofday(&s1,0);
+                        /*struct timeval s1, s2, s3;
+                        gettimeofday(&s1,0);*/
                         int sent_size=send(s_pool.poll_list[i].fd, ready_buffer, ready_size,0);
-                        gettimeofday(&s2,0);
+                        /*gettimeofday(&s2,0);
                         timersub(&s2, &s1, &s3);
 
                         timeradd(&s3, &total_send_time, &total_send_time);
                         get_time_string(&s3, this_st);
-
+*/
 
                         if (sent_size==0 || sent_size==-1)
                         {
@@ -1018,7 +1018,7 @@ int main(int argc, char **argv)
                 }//end pollout
             }//end iterating revents loop
         }//end if num_poll>0
-
+/*
 		struct timeval poll_end_time;
 		gettimeofday(&poll_end_time, 0);
 		struct timeval poll_time;
@@ -1028,10 +1028,10 @@ int main(int argc, char **argv)
 		char this_pt[20];
     	get_time_string(&poll_time, this_pt);
 
-    	/*fprintf(stderr,"raw this time is %i.%i raw total time is %i.%i\n",
+    	fprintf(stderr,"raw this time is %i.%i raw total time is %i.%i\n",
     			poll_time.tv_sec, poll_time.tv_usec,
     			total_poll_time.tv_sec, total_poll_time.tv_usec);
-*/
+
     	char pt[20];
     	char rt[20];
     	char st[20];
@@ -1039,7 +1039,7 @@ int main(int argc, char **argv)
     	get_time_string(&total_send_time, st);
     	get_time_string(&total_receive_time, rt);
 
-/*    	fprintf(stderr,"total polling time is %s, total receive time is %s, total send time is %s\n",
+    	fprintf(stderr,"total polling time is %s, total receive time is %s, total send time is %s\n",
     			pt, rt, st);
     	fprintf(stderr,"this polling time is %s, this receive time is %s, this send time is %s\n",
     	    			this_pt, this_rt, this_st);*/
