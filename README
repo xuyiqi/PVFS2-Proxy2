@@ -22,7 +22,7 @@ Introduction
 ==============
 
   Parallel Virtual File System 2 (PVFS2) Proxy is an optimization for providing I/O differentiation and Quality of Service(QoS) in parallel environments and seamless integration with unmodified applications.
-  It leverages existing PVFS2 TCP implementation and uses user-level proxies to track, differentiate and forward file system requests/responses between the native PVFS2 servers and the remote clients.
+  It leverages existing PVFS2 TCP implementation and uses user-level proxies to track, differentiate and forward file system requests/responses between the native PVFS2 servers and the remote clients. The current default supported striping method is simple_stripe (round_robin).
 
 Requirements
 ===============
@@ -160,15 +160,15 @@ Setup
 
   4. Start executing test programs and verify the sanity and performance by
 
-     “pvfs2-ping -m /mnt/pvfs2”
-     Execute wireshark and listen on PVFS specific messages to make sure all the traffic goes through the designated port (3335 in the example) rather than the original native server port (3334 by default).
-     Use IOR2 in MPIIO  (compiled with PVFS2 support) to test communication directly between clients and proxyies/servers.  Current implementation only includes WRITE operation for PVFS scheduler.  It is only limited to IOR2 tests with blocksize of multiples of transfersize*number of stripped servers.
-     To test using PVFS2 protocol support in MPIIO: 
-     "/home/users/software/mpich2-1.2.1p1/bin/mpiexec -machinefile tests/machinefile.1 -n 2 /home/users/software/IOR/src/C/IOR -a MPIIO -o pvfs2:/home/users/yiqi/mnt/t4 -wk -t 1m -b 20m"
-     To manually setup asymmtric environment on the server:
-     "pvfs2-touch /home/users/yiqi/mnt/t6 -l tcp://c1n2:3334" to specify the new file's own server layout/distribution.
-     For how to let MPICH2 talk PVFS:
-     http://pvfs.org/cvs/pvfs-2-8-branch-docs/doc//pvfs2-quickstart/pvfs2-quickstart.php#SECTION00090000000000000000     
+     * “pvfs2-ping -m /mnt/pvfs2”
+     * Execute wireshark and listen on PVFS specific messages to make sure all the traffic goes through the designated port (3335 in the example) rather than the original native server port (3334 by default).
+     * Use IOR2 in MPIIO  (compiled with PVFS2 support) to test communication directly between clients and proxyies/servers.  Current implementation only includes WRITE operation for PVFS scheduler.  It is only limited to IOR2 tests with blocksize of multiples of transfersize*number of stripped servers.
+     * To test using PVFS2 protocol support in MPIIO: 
+       "/home/users/software/mpich2-1.2.1p1/bin/mpiexec -machinefile tests/machinefile.1 -n 2 /home/users/software/IOR/src/C/IOR -a MPIIO -o pvfs2:/home/users/yiqi/mnt/t4 -wk -t 1m -b 20m"
+     * To manually setup asymmtric environment on the server:
+       "pvfs2-touch /home/users/yiqi/mnt/t6 -l tcp://c1n2:3334" to specify the new file's own server layout/distribution.
+     * For how to let MPICH2 talk PVFS:
+       http://pvfs.org/cvs/pvfs-2-8-branch-docs/doc//pvfs2-quickstart/pvfs2-quickstart.php#SECTION00090000000000000000     
      
 * Destroy PVFS2 proxy:
   Use "umount" to unmount the PVFS2 partition (if you started it by using kernle module) and then kill the proxy daemons.
@@ -182,6 +182,7 @@ Support
 ==========
 
   Web site: http://groups.google.com/group/hecura-vpfs
-  SVN: https://visa.cis.fiu.edu/svn/hecura/pvfs-proxy 
-  Email: zhaom@cis.fiu.edu, yxu006@cis.fiu.edu 
+  SVN: https://visa.cis.fiu.edu/svn/hecura/pvfs-proxy
+  Github: https://github.com/xuyiqi/PVFS2-Proxy2 
+  Email: yxu006@cis.fiu.edu, zhaom@cis.fiu.edu 
 

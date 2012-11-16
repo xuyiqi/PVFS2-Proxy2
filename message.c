@@ -227,6 +227,10 @@ int check_request(int index)
 	unsigned char header[eheader];
 	int read_socket=s_pool.poll_list[index].fd;
 	//fprintf(stderr,"checking from socket %i\n", read_socket);
+
+	struct timeval peek_time;
+	gettimeofday(&peek_time, 0);
+
 	int ret = get_bmi_header(header, eheader, read_socket);
 	int counter_index=s_pool.socket_state_list[index].counter_socket_index;
 
@@ -243,9 +247,18 @@ int check_request(int index)
 		tag=output_param(header, 8, 8 , "tag",NULL,0);
 		long long size=output_param(header, 16, 8 , "size",NULL,0);
 		struct request_state* new_rs;
+
+		struct timeval receive_time;
+		gettimeofday(&receive_time, 0);
+
 		if (s_pool.socket_state_list[index].incomplete_mode ==0)
 		{
+
 			new_rs = add_request_to_socket(index, tag);
+			//a request is only created when we first see the whole pvfs header, so even if previous mutliple tries exist
+			//with bmi tag available, we cannot include the first receive to start at that time.
+			new_rs->first_receive_time = receive_time;
+			new_rs->last_peek_time = peek_time;
 			new_rs->last_tag = -1;
 			new_rs->current_tag = tag;
 			new_rs->job_size = size + BMI_HEADER_LENGTH;
@@ -274,9 +287,6 @@ int check_request(int index)
 		}
 		struct request_state * old_rs = find_request(counter_index, tag, 1);
 		//comparing on the server side, the last_tag, which is set by receiving a response, but initially a -1
-
-		struct timeval receive_time;
-		gettimeofday(&receive_time, 0);
 
 		if (old_rs != NULL && tag == old_rs->current_tag)//is_tag_used(s_pool.socket_state_list[counter_index].ip, s_pool.socket_state_list[counter_index].port, tag))
 		{
@@ -341,7 +351,7 @@ int check_request(int index)
 
 					if (scheduler_on && ( io_type == PVFS_IO_WRITE || small == 1 ))
 					{
-						fprintf(stderr,"W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W\n");
+						//fprintf(stderr,"W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W\n");
 						struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
 						int this_size = logical_to_physical_size_dparam(dist);
 
@@ -404,7 +414,7 @@ int check_request(int index)
 					else if (scheduler_on && io_type==PVFS_IO_READ )
 
 					{
-						fprintf(stderr,"R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R\n");
+						//fprintf(stderr,"R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R R\n");
 
 						struct dist* dist = dump_header(header2,REQUEST,s_pool.socket_state_list[index].ip);
 						int this_size=dist->aggregate_size/dist->total_server_number;
@@ -559,6 +569,12 @@ int check_response(int index)//peeking
 	unsigned char header[eheader];
 	int read_socket=s_pool.poll_list[index].fd;
 	int counter_index=s_pool.socket_state_list[index].counter_socket_index;
+
+	struct timeval peek_time;
+	gettimeofday(&peek_time, 0);
+
+
+
 	int ret=get_bmi_header(header, eheader, read_socket);
 	int tag = -1;
 	if (ret!=eheader)
@@ -581,7 +597,6 @@ int check_response(int index)//peeking
 		}
 		struct timeval receive_time;
 		gettimeofday(&receive_time, 0);
-		response_rs->receive_time = receive_time;
 		long long size = output_param(header, 16, 8 , "size",NULL,0);
 		int new_resp = 0;
 		if (response_rs->job_size <= 0)//this is newly created by the request
@@ -595,6 +610,8 @@ int check_response(int index)//peeking
 			response_rs->current_tag = tag;
 			response_rs->last_tag = tag;
 			response_rs->job_size = size + BMI_HEADER_LENGTH;
+			response_rs->last_peek_time = peek_time;
+			response_rs->first_receive_time = receive_time;
 
 			new_resp = 1;
 		}
@@ -609,7 +626,7 @@ int check_response(int index)//peeking
 			{
 				new_response_rs = add_request_to_socket(index, tag);
 				new_response_rs->buffer = malloc( ( size + BMI_HEADER_LENGTH ) * sizeof( char ) );
-				fprintf(stderr,"new flow from item tag %i\n", tag);
+				//fprintf(stderr,"new flow from item tag %i\n", tag);
 				new_response_rs->buffer_head = 0;
 				new_response_rs->buffer_tail = 0;
 				new_response_rs->buffer_size = size + BMI_HEADER_LENGTH;
@@ -624,6 +641,8 @@ int check_response(int index)//peeking
 				new_response_rs->locked = 0;
 				new_response_rs->original_request = response_rs->original_request;
 				new_response_rs->meta_response = 0;
+				new_response_rs->first_receive_time = receive_time;
+				new_response_rs->last_peek_time = peek_time;
 				//fprintf(stderr, "new response on %i, tag %i\n", index, tag);
 			}
 			else
@@ -660,7 +679,8 @@ int check_response(int index)//peeking
 			new_response_rs->last_tag = tag;
 			new_response_rs->job_size = size + BMI_HEADER_LENGTH;
 			new_response_rs->meta_response = 0;
-
+			new_response_rs->first_receive_time = receive_time;
+			new_response_rs->last_peek_time = peek_time;
 			response_rs = new_response_rs;
 			//add to the list
 			new_resp = 1;
@@ -711,7 +731,7 @@ int check_response(int index)//peeking
 					operation==PVFS_SERV_SMALL_IO)
 				{
 					dist = dump_header(header2,RESPONSE,s_pool.socket_state_list[index].ip);
-					fprintf(stderr,"dist pointer is %i\n", dist);
+					//fprintf(stderr,"dist pointer is %i\n", dist);
 				}
 				else
 				{
@@ -745,15 +765,15 @@ int check_response(int index)//peeking
 					if (operation==PVFS_SERV_IO) //scheduler check is in the branch body
 					{
 						long long returned_size = output_param(header2, 36, 4, "IO request returned is ", NULL,0);
-						fprintf(stderr,"item %i IO response status: %i", tag ,returned_size);
+						//fprintf(stderr,"item %i IO response status: %i", tag ,returned_size);
 						returned_size = *(long long *)(header2+40);
-						fprintf(stderr," bstream size: %i\n", returned_size);
+						//fprintf(stderr," bstream size: %i\n", returned_size);
 						//if it returned zero...that would mean this I/O complete..work like write_completion....
 						//but we may need to adjust last_finish tag forward a little...
 
 						if (response_rs->pvfs_io_type!=PVFS_IO_READ)
 						{
-							fprintf(stderr,"the response is a write %i\n", response_rs->pvfs_io_type);
+							//fprintf(stderr,"the response is a write %i\n", response_rs->pvfs_io_type);
 						}
 						if (response_rs->pvfs_io_type==PVFS_IO_READ && scheduler_on == 1)
 						{
@@ -780,8 +800,8 @@ int check_response(int index)//peeking
 							if (current_size <= 0)
 									//eof returns -1;
 							{
-								fprintf(stderr,"warning!!!, passed EOF\n");
-								fprintf(stderr,"EOF already, dispatching new items......\n");
+								//fprintf(stderr,"warning!!!, passed EOF\n");
+								//fprintf(stderr,"EOF already, dispatching new items......\n");
 
 								response_rs->last_flow = 1;
 
@@ -823,7 +843,7 @@ int check_response(int index)//peeking
 								(*(static_methods[scheduler_index]->sch_get_scheduler_info))();
 								if (new_item==NULL)
 								{
-										fprintf(stderr, "no more jobs found, depth decreased...\n");
+										//fprintf(stderr, "no more jobs found, depth decreased...\n");
 								}
 								else
 								{

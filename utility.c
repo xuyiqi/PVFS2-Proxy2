@@ -332,8 +332,8 @@ int get_my_share(int strip_size, int server_count,
 		actual_data_file_size = 0x1fffffffffffffff;
 	}
 
-	fprintf(stderr,"data file size:%lli\n", actual_data_file_size);
-	fprintf(stderr,"ask_size %i\n", ask_size);
+	//fprintf(stderr,"data file size:%lli\n", actual_data_file_size);
+	//fprintf(stderr,"ask_size %i\n", ask_size);
     int whole_strip_size = strip_size * server_count;
     int offset_nr_whole_strip = offset / whole_strip_size;//how many whole stripe the offset has passed
     int left_over_first = offset % whole_strip_size;//the passed bytes (where we skipped)
@@ -353,22 +353,25 @@ int get_my_share(int strip_size, int server_count,
     /*figuring out my offset */
     if (left_over_first <= server_nr * strip_size)
     {
-    	fprintf(stderr," 1 my_offset = stripe * strip_size = %i * %i = %i\n",
+    	/*fprintf(stderr," 1 my_offset = stripe * strip_size = %i * %i = %i\n",
     			offset_nr_whole_strip, strip_size, offset_nr_whole_strip * strip_size);
+    	*/
     	my_offset = offset_nr_whole_strip * strip_size;
 
     }
     else if ( server_nr * strip_size < left_over_first )
     {
-    	fprintf(stderr," 2 my_offset = stripe * strip_size + small_first = %i * %i + %i = %i\n",
+    	/*fprintf(stderr," 2 my_offset = stripe * strip_size + small_first = %i * %i + %i = %i\n",
     			offset_nr_whole_strip  , strip_size, small_first_left_over,
     			( offset_nr_whole_strip )* strip_size + small_first_left_over);
+    	*/
     	my_offset = ( offset_nr_whole_strip )* strip_size + small_first_left_over;
     }
     else
     {
-    	fprintf(stderr," 3 my_offset = stripe * strip_size = %i * %i = %i\n",
+    	/*fprintf(stderr," 3 my_offset = stripe * strip_size = %i * %i = %i\n",
     			offset_nr_whole_strip +1 , strip_size, ( offset_nr_whole_strip + 1 )* strip_size);
+    	*/
     	my_offset = (offset_nr_whole_strip +1 ) * strip_size;
     }
 
@@ -405,14 +408,10 @@ int get_my_share(int strip_size, int server_count,
     		if (number_strips == 1 && small_first_left_over + ask_size <= strip_size)
     		{
     			my_shared_size = ask_size;
-/*    			if (my_offset >= actual_data_file_size)
-    			{
-    				fprintf(stderr,"returning ask size %i\n", ask_size);
-    				return my_shared_size;
-    			}*/
     			my_short_shared_size = MIN(my_shared_size, MAX(actual_data_file_size-my_offset,0) );
-    			fprintf(stderr,"expecting0 %i %lli\n",
+    			/*fprintf(stderr,"expecting0 %i %lli\n",
     					my_shared_size, MAX(actual_data_file_size-my_offset,0) );
+    			*/
     			return my_short_shared_size;
     		}
     		//num_strip > 1
@@ -421,27 +420,20 @@ int get_my_share(int strip_size, int server_count,
     			if (server_nr ==0)
     			{
         			my_shared_size = strip_size - small_first_left_over;
-/*        			if (my_offset >= actual_data_file_size)
-        			{
-        				fprintf(stderr,"returning strip_size - small_first_left_over %i\n", strip_size - small_first_left_over);
-        				return my_shared_size;
-        			}*/
         			my_short_shared_size = MIN(my_shared_size, MAX(actual_data_file_size-my_offset,0) );
-        			fprintf(stderr,"expecting1 %i %lli\n",
+        			/*fprintf(stderr,"expecting1 %i %lli\n",
         					my_shared_size, MAX(actual_data_file_size-my_offset,0) );
+        			*/
         			return my_short_shared_size;
     			}
     			else
     			{
     				my_shared_size = strip_size;
-/*        			if (my_offset >= actual_data_file_size)
-        			{
-        				fprintf(stderr,"returning strip size %i\n", strip_size);
-        				return my_shared_size;
-        			}*/
+
     				my_short_shared_size = MIN(my_shared_size, MAX(actual_data_file_size-my_offset,0) );
-    				fprintf(stderr,"expecting2 %i %lli\n",
+    				/*fprintf(stderr,"expecting2 %i %lli\n",
     						my_shared_size, MAX(actual_data_file_size-my_offset,0) );
+    				*/
     				return my_short_shared_size;
 
     			}
@@ -450,14 +442,10 @@ int get_my_share(int strip_size, int server_count,
     		{
     			my_shared_size =  (ask_size + small_first_left_over) % strip_size;
 
-/*    			if (my_offset >= actual_data_file_size)
-    			{
-    				fprintf(stderr,"returning ask size + small first % strip size\n", my_shared_size);
-    				return my_shared_size;
-    			}*/
     			my_short_shared_size = MIN(my_shared_size, MAX(actual_data_file_size-my_offset,0) );
-    			fprintf(stderr,"expecting3 %i %lli\n",
+    			/*fprintf(stderr,"expecting3 %i %lli\n",
     					my_shared_size, MAX(actual_data_file_size-my_offset,0) );
+    			*/
     			return my_short_shared_size;
     		}
     	}
@@ -513,9 +501,9 @@ int get_my_share(int strip_size, int server_count,
 		return my_shared_size;
 	}*/
 	my_short_shared_size = MIN(my_shared_size, MAX(actual_data_file_size-my_offset,0) );
-	fprintf(stderr,"expecting4 %i %lli\n",
+	/*fprintf(stderr,"expecting4 %i %lli\n",
 			my_shared_size, MAX(actual_data_file_size-my_offset,0) );
-	return my_short_shared_size;
+*/	return my_short_shared_size;
 
 
 }
@@ -774,3 +762,5 @@ void get_time_diff(struct timeval * last, struct timeval * diff)
     //		(int)last->tv_sec, (int)last->tv_usec, (int)nowtime.tv_sec, (int)nowtime.tv_usec);
     timersub(&nowtime,last,diff);
 }
+
+

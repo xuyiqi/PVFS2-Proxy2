@@ -287,7 +287,8 @@ struct dist* dump_IO_Request(unsigned char* buffer, int IO_size, int offset, int
 
 	//fprintf(stderr,"    offset:%lli,%lli\n", internal_offset,internal_offset2);
 
-	//offset+=((num_nested_req+1)*80);
+	offset+=((num_nested_req+1)*80);
+	/*
 	for (i=0;i<num_nested_req+1;i++)
 	{
 		///io/desc/pint-req-encode.h 104, 56
@@ -355,7 +356,7 @@ struct dist* dump_IO_Request(unsigned char* buffer, int IO_size, int offset, int
 		fprintf(stderr,"    sreq:%lli\n", sreq);
 		offset+=length;
 
-	}
+	}*/
 
 
 	length=8;

@@ -57,6 +57,10 @@ extern char* log_prefix;
 char *directions[2]={"SERVER","CLIENT"};
 int enable_first_receive=0;
 struct socket_pool  s_pool;
+struct timeval total_service_time;
+struct timeval total_poll_time;
+
+struct timeval total_send_time, total_receive_time, total_pcall_time, total_prepare_time;
 
 extern int logging;
 int timer_stop=0;
@@ -81,6 +85,24 @@ int completefwd[10];
 
 int setup_socket()
 {
+	total_service_time.tv_sec = 0 ;
+	total_service_time.tv_usec = 0 ;
+
+	total_poll_time.tv_sec = 0 ;
+	total_poll_time.tv_usec = 0 ;
+
+	total_send_time.tv_sec = 0 ;
+	total_send_time.tv_usec = 0 ;
+
+	total_receive_time.tv_sec = 0 ;
+	total_receive_time.tv_usec = 0 ;
+
+	total_pcall_time.tv_sec = 0 ;
+	total_pcall_time.tv_usec = 0 ;
+
+	total_prepare_time.tv_sec = 0 ;
+	total_prepare_time.tv_usec = 0 ;
+
     int listen_socket = BMI_sockio_new_sock();//setup listening socket
 
     int ret = BMI_sockio_set_sockopt( listen_socket, SO_REUSEADDR, 1 );//reuse immediately
@@ -241,10 +263,17 @@ int accept_socket(int listen_socket)
     int ret;
     if ((ret=BMI_sockio_connect_sock(server_socket,"localhost",3334,server_ip, &server_port))!=server_socket)//we establish a pairing connecting to our local server
     {
-		fprintf(stderr,"Error connecting %i\n",ret);
+		fprintf(stderr,"Error connecting to local PVFS2 server, returning %i\n",ret);
 		close(client_socket);
 		close(server_socket);
 		exit (-1);
+    }
+
+    optval = 1;
+    if ( setsockopt( server_socket, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval) ) == -1 )
+    {
+    	fprintf( stderr, "error setsockopt on server socket\n" );
+    	exit( -1 );
     }
     //Dprintf(L_NOTICE,"Connection successful\n");
     int app_index=add_socket_to_pool(client_socket,server_socket,0,
@@ -280,7 +309,31 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 
 	while (removed_rs!= NULL)
 	{
-		fprintf(stderr,"%s(%i) ",ops[removed_rs->op], removed_rs->op);
+		//fprintf(stderr,"%s(%i) ",ops[removed_rs->op], removed_rs->op);
+/*
+		struct timeval receive,send, total;
+		struct timeval peek, latency;
+		char receive_char[20];
+		char send_char[20];
+		char total_char[20];
+		char peek_char[20];
+		char latency_char[20];
+		timersub(&removed_rs->total_receive_time,&removed_rs->first_receive_time,&receive);
+		timersub(&removed_rs->total_send_time,&removed_rs->first_send_time,&send);
+		timersub(&removed_rs->total_send_time,&removed_rs->first_receive_time,&total);
+		timersub(&removed_rs->first_receive_time,&removed_rs->last_peek_time,&peek);
+		timersub(&removed_rs->total_send_time,&removed_rs->last_peek_time,&latency);
+
+		timeradd(&latency, &total_service_time, &total_service_time);
+		get_time_string(&receive, receive_char);
+		get_time_string(&send, send_char);
+		get_time_string(&total, total_char);
+		get_time_string(&latency, latency_char);
+		get_time_string(&peek, peek_char);
+
+		fprintf(stderr, " p%s r%s s%s t%s l%s, ", peek_char, receive_char, send_char, total_char, latency_char);
+*/
+
 		if (removed_rs->buffer!=NULL)
 			free(removed_rs->buffer);
 		removed_rs->buffer = NULL;
@@ -304,7 +357,7 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 				list_req_state_comp_curr);
 		client_c++;
 	}
-	fprintf(stderr, "%i client messages freed, ", client_c);
+	//fprintf(stderr, "%i client messages freed, ", client_c);
 
 	removed_rs =  (struct request_state*)PINT_llist_rem(
 			s_pool.socket_state_list[counter_index].req_state_data,
@@ -312,6 +365,31 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 			list_req_state_comp_curr);
 	while (removed_rs!= NULL)
 	{
+/*
+		fprintf(stderr,"%s(%i) ",ops[removed_rs->op], removed_rs->op);
+		struct timeval receive,send, total;
+		struct timeval peek, latency;
+		char receive_char[20];
+		char send_char[20];
+		char total_char[20];
+		char peek_char[20];
+		char latency_char[20];
+		timersub(&removed_rs->total_receive_time,&removed_rs->first_receive_time,&receive);
+		timersub(&removed_rs->total_send_time,&removed_rs->first_send_time,&send);
+		timersub(&removed_rs->total_send_time,&removed_rs->first_receive_time,&total);
+		timersub(&removed_rs->first_receive_time,&removed_rs->last_peek_time,&peek);
+		timersub(&removed_rs->total_send_time,&removed_rs->last_peek_time,&latency);
+
+		timeradd(&latency, &total_service_time, &total_service_time);
+		get_time_string(&receive, receive_char);
+		get_time_string(&send, send_char);
+		get_time_string(&total, total_char);
+		get_time_string(&latency, latency_char);
+		get_time_string(&peek, peek_char);
+
+		fprintf(stderr, " p%s r%s s%s t%s l%s, ", peek_char, receive_char, send_char, total_char, latency_char);
+*/
+
 		if (removed_rs->buffer!=NULL)
 			free(removed_rs->buffer);
 		removed_rs->buffer = NULL;
@@ -336,7 +414,10 @@ void clean_up_request_state(int i, int counter_index, long tag, char* type)
 				list_req_state_comp_curr);
 		server_c++;
 	}
-	fprintf(stderr, "%i server messages freed, %i items removed so far\n", server_c, item_removal);
+	char ttlsvctime[20];
+	get_time_string(&total_service_time, ttlsvctime);
+	/*fprintf(stderr, "%i server messages freed, %i items removed so far, SVC Time is %s\n",
+			server_c, item_removal, ttlsvctime);*/
 
 }
 
@@ -382,13 +463,54 @@ int main(int argc, char **argv)
     while (1)
     {
         //fprintf(stderr,"polling\n");
+
+
+    	char this_rt[20] = "no time";
+    	char this_st[20] = "no time";
+
+    	char this_pcall[20];
+    	char this_prepare[20];
+    	char pcall[20];
+    	char prepare[20];
+
+		struct timeval poll_start_time;
+		gettimeofday(&poll_start_time, 0);
+
     	prepare_events();
 
         //fprintf(stderr,"before polling...size %i ",s_pool.pool_size);
         //print_socket_pool();
+
+		struct timeval poll_start_time2;
+		gettimeofday(&poll_start_time2, 0);
+
+		struct timeval this_prepare_time;
+		timersub( &poll_start_time2, &poll_start_time, &this_prepare_time );
+		timeradd( &this_prepare_time, &total_prepare_time, &total_prepare_time );
+
         int num_poll=poll(s_pool.poll_list,s_pool.pool_size,poll_delay);
 
-        //fprintf(stderr,"eeeeeeeeeeeeeeeeend polling, got %i eeeeeeeeeeeeeeeee\n", num_poll);
+        struct timeval process_start_time;
+		gettimeofday(&process_start_time, 0);
+
+		struct timeval this_pcall_time;
+		timersub( &process_start_time, &poll_start_time2, &this_pcall_time );
+		timeradd( &this_pcall_time, &total_pcall_time, &total_pcall_time );
+
+    	get_time_string(&this_pcall_time, this_pcall);
+    	get_time_string(&this_prepare_time, this_prepare);
+    	get_time_string(&total_pcall_time, pcall);
+    	get_time_string(&total_prepare_time, prepare);
+
+
+
+/*    	fprintf(stderr,"this pcall time is %s, this prepare time is %s\n",
+    			this_pcall, this_prepare);
+    	fprintf(stderr,"total pcall time is %s, total prepare time is %s\n",
+    	    	pcall, prepare);*/
+
+
+		//fprintf(stderr,"eeeeeeeeeeeeeeeeend polling, got %i eeeeeeeeeeeeeeeee\n", num_poll);
         int process=0;//total processed socket for each poll
 
         if (num_poll>0)
@@ -509,7 +631,16 @@ int main(int argc, char **argv)
 							//fprintf(stderr, "trying to receive %i bytes\n", recv_size);
 							recv_restart:
 							errno = 0;
+
+	                        struct timeval s1, s2, s3;
+	                        gettimeofday(&s1,0);
+
 							got_size = recv( read_socket, buffer, recv_size, MSG_DONTWAIT );
+	                        gettimeofday(&s2,0);
+	                        timersub(&s2, &s1, &s3);
+
+	                        timeradd(&s3, &total_receive_time, &total_receive_time);
+	                        get_time_string(&s3, this_rt);
 
 							//fprintf(stderr,"#Got size:%i\n",got_size);
 							if (got_size == -1 && errno!=EINTR && errno!=EAGAIN || got_size==0)
@@ -586,6 +717,10 @@ int main(int argc, char **argv)
 						{
 							//after each receive, check if it's a total complete of message/the response of get_config
 
+
+							struct timeval total_receive_time;
+							gettimeofday(&total_receive_time, 0);
+							current_receive_item->total_receive_time = total_receive_time;
 							if (current_receive_item->config_tag==1)
 							{
 								current_receive_item->config_tag=0;//the sending lock can be released now
@@ -791,7 +926,16 @@ int main(int argc, char **argv)
                     {
                         char * ready_buffer = write_rs->buffer + write_rs->buffer_head;//reader's buffer
 
+                        struct timeval s1, s2, s3;
+                        gettimeofday(&s1,0);
                         int sent_size=send(s_pool.poll_list[i].fd, ready_buffer, ready_size,0);
+                        gettimeofday(&s2,0);
+                        timersub(&s2, &s1, &s3);
+
+                        timeradd(&s3, &total_send_time, &total_send_time);
+                        get_time_string(&s3, this_st);
+
+
                         if (sent_size==0 || sent_size==-1)
                         {
                                 fprintf(stderr, "Sent error on %i; returning %i\n",s_pool.poll_list[i].fd, sent_size);
@@ -800,6 +944,13 @@ int main(int argc, char **argv)
                         }
                         else
                         {
+                        	if (write_rs->buffer_head==0)
+                        	{
+    							struct timeval first_send_time;
+    							gettimeofday(&first_send_time, 0);
+    							write_rs->first_send_time = first_send_time;
+                        	}
+
                         	/*fprintf(stderr,"sent %i bytes on socket %i, head %i, tail %i, size %i\n",
                         			sent_size, i, write_rs->buffer_head, write_rs->buffer_tail, write_rs->buffer_size);
                             */
@@ -819,6 +970,10 @@ int main(int argc, char **argv)
                             //then all exisitng data in the buffer is sent
                             else if (write_rs->buffer_size == write_rs->buffer_head)
 							{
+
+    							struct timeval total_send_time;
+    							gettimeofday(&total_send_time, 0);
+    							write_rs->total_send_time = total_send_time;
 								//completion of message protocol declared size!
 								//fprintf(stderr,"forwarding complete, cleaning buffer on socket %i\n",s_pool.socket_state_list[counter_index].socket);
 								if (write_rs->op == PVFS_SERV_WRITE_COMPLETION ||
@@ -863,6 +1018,32 @@ int main(int argc, char **argv)
                 }//end pollout
             }//end iterating revents loop
         }//end if num_poll>0
+
+		struct timeval poll_end_time;
+		gettimeofday(&poll_end_time, 0);
+		struct timeval poll_time;
+		timersub(&poll_end_time, &poll_start_time, &poll_time);
+		timeradd(&poll_time, &total_poll_time, &total_poll_time);
+
+		char this_pt[20];
+    	get_time_string(&poll_time, this_pt);
+
+    	/*fprintf(stderr,"raw this time is %i.%i raw total time is %i.%i\n",
+    			poll_time.tv_sec, poll_time.tv_usec,
+    			total_poll_time.tv_sec, total_poll_time.tv_usec);
+*/
+    	char pt[20];
+    	char rt[20];
+    	char st[20];
+    	get_time_string(&total_poll_time, pt);
+    	get_time_string(&total_send_time, st);
+    	get_time_string(&total_receive_time, rt);
+
+/*    	fprintf(stderr,"total polling time is %s, total receive time is %s, total send time is %s\n",
+    			pt, rt, st);
+    	fprintf(stderr,"this polling time is %s, this receive time is %s, this send time is %s\n",
+    	    			this_pt, this_rt, this_st);*/
+
     }//end polling
     return 0;
 }

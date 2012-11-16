@@ -138,7 +138,11 @@ struct request_state
 	unsigned long long read_offset;
 
 	char * buffer;
-	struct timeval receive_time;
+	struct timeval last_peek_time;
+	struct timeval first_receive_time;
+	struct timeval total_receive_time;
+	struct timeval first_send_time;
+	struct timeval total_send_time;
 	int buffer_size;
 	int buffer_head;
 	int buffer_tail;
