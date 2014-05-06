@@ -142,9 +142,11 @@ Setup
      Note: All the servers in the server configuration file will be disguised as a different location (change of ports to redirect to the proxy) when the proxy is working and the contact from a client is made through the proxy.  Thus, all the running servers should have a same copy of proxy running with the same parameters (port).  It can happen that some clients will mount their remote servers from the original ports, but that still requires the proxy to exist on every node in case another client needs to contact this server via the proxy on another server.
 
   3. Start the proxy on the file system server by
-     ```./proxy2 [--port=port_number] [--buffer=cache_size] [--logging=default|all|none|debug|cache]
+     ```
+	 ./proxy2 [--port=port_number] [--buffer=cache_size] [--logging=default|all|none|debug|cache]
 	 [--delay=poll_timeout] [--scheduler=SFQD|DSFQ|vDSFQ|SFQD_Full|2LSFQD|none] [--config=weights.ini]
-	 [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]```
+	 [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]
+	 ```
      The cache_size(in bytes) has a limit – it has to be larger than the size of the configuration file (/etc/pvfs2-fs.conf by default on the server nodes).  50-100KB seems to be a reasonably optimal size according to our program tuning and testing.  The cache sits on each socket bound to a client or the server response (initiated by the client and the server).  Thus, setting an appropriate amount of cache keeps the system healthy.
      The counter flag indicates whether or not to start the periodical counter for every few seconds' statistics.
      The stat flag identifies the name of the log file for final statistic output when it receives SIG_TERM.
