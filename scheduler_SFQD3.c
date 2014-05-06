@@ -77,7 +77,7 @@ int sfqd3_add_ttl_tp(int this_amount, int app_index)
     app_stats[app_index].app_throughput=app_stats[app_index].app_throughput+this_amount;
 }
 
-int sfqd3_calculate_diff(int app_index)
+long long sfqd3_calculate_diff(int app_index)
 {
 	return app_stats[app_index].app_throughput-total_throughput*app_stats[app_index].app_weight/total_weight;
 }
@@ -593,7 +593,7 @@ int sfqd3_load_data_from_config (dictionary * dict)
 	sfqd3_depths=(int*)malloc(num_apps*sizeof(int));
 	sfqd3_depths[0]=iniparser_getint(dict, "SFQD3:depth", 8);
 	sfqd3_depths[1]=iniparser_getint(dict, "SFQD3:depth", 8);
-	fprintf(stderr,"SFQD using depth_large:%i\n",sfqd3_depths[1]);
+	fprintf(stderr,"SFQD3 using depth_large:%i\n",sfqd3_depths[1]);
 
 
 }

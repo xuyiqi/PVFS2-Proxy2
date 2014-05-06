@@ -400,7 +400,7 @@ int get_my_share(int strip_size, int server_count,
 
     		if (number_strips == 1 && small_first_left_over + ask_size > strip_size)
     		{
-    			fprintf(stderr,"case 2, failure, %i, %i, %i\n",
+    			fprintf(stderr,"case 2, failure, %i, %lli, %i\n",
     					small_first_left_over, ask_size, strip_size);
     			exit(-1);
     		}
@@ -625,7 +625,7 @@ void dump_stat(int sig)
 			}
 		}
 		fprintf(stderr,"%s: app %i received %i, dispatched %i, completed %i\n", log_prefix, i, app_stats[i].received_requests, app_stats[i].dispatched_requests, app_stats[i].completed_requests);
-		fprintf(stderr,"%s: average resp time is %i ms\n", log_prefix, average_resp_time[i]/app_stats[i].completed_requests);
+		fprintf(stderr,"%s: average resp time is %f ms\n", log_prefix, average_resp_time[i]/(app_stats[i].completed_requests+0.01f));
 	}
 
 

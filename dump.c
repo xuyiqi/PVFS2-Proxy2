@@ -550,13 +550,13 @@ struct attr_plus dump_attribute(char* buffer, int* offset)
 	length=4;
 	int create_attr_mask = output_param(buffer, *offset, length, "create attr mask", NULL,0);
 	*offset+=length;
-	fprintf(stderr,"create attr mask: %X\n", create_attr_mask);
+	//fprintf(stderr,"create attr mask: %X\n", create_attr_mask);
 
 	length=4;
 	int create_ds_type = output_param(buffer, *offset, length, "create ds type", NULL,0);
 	*offset+=length;
 
-	fprintf(stderr,"create ds type: %i\n", create_ds_type);
+	//fprintf(stderr,"create ds type: %i\n", create_ds_type);
 	struct attr_plus ret;
 	ret.create_ds_type=create_ds_type;
 	ret.attr_mask=create_attr_mask;
@@ -763,7 +763,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		length=4;
 		int attr_mask = output_param(buffer, offset, length, "attr mask", NULL,0);
 		meta->mask = attr_mask;
-		//fprintf(stderr, "HANDLE %#08llX, FS ID %#08lX, MASK %#08lX\n", attr_handle, attr_fs_id, attr_mask);
+		//fprintf(stderr, "HANDLE %#08llX, FS ID %#08X, MASK %#08X\n", attr_handle, attr_fs_id, attr_mask);
 		break;
 		//handle[8]
 		//fs_id[4]
@@ -782,7 +782,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		length=8;
 		int ds_position = output_param(buffer, offset, length, "ds position", NULL,0);
 		//fprintf(stderr, "HANDLE %#08llX, FS ID %#08lX, ENTRY COUNT %#08lX, DS POSITION %#08lX\n",
-			//	dir_handle, dir_fs_id, dir_entry_count, ds_position);
+		//		dir_handle, dir_fs_id, dir_entry_count, ds_position);
 
 		//dir_handle[8]
 		//fs_id[4]
@@ -806,14 +806,15 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 
 		int i;
 		//fprintf(stderr,"HANDLES:");
-		for (i =0; i< listattr_handle_num; i++)
+		/*for (i =0; i< listattr_handle_num; i++)
 		{
 			length=8;
 			int handle = output_param(buffer, offset, length, "handle", NULL,0);
 			//fprintf(stderr, "%#08llX ", handle);
 			offset+=length;
-		}
-		//fprintf(stderr,"\n");
+		}*/
+		offset+=length*listattr_handle_num;
+		fprintf(stderr,"listing %i attrs\n", listattr_handle_num);
 
 
 		/*
@@ -1041,7 +1042,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 		break;
 
 	default:
-		fprintf(stderr, "Error, not supported operation in scheduler %i, %s\n", operation, ops[operation]);
+		fprintf(stderr, "Error, not supported operation in scheduler %lli, %s\n", operation, ops[operation]);
 		exit(-1);
 		break;
 

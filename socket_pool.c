@@ -103,7 +103,7 @@ void remove_socket_by_index(int socket_index)
 			exit(-1);
 		}
 		long tag = current_item->current_tag;
-		fprintf(stderr,"removing tag %i op %i (%s) - R/W %i \n",
+		fprintf(stderr,"removing tag %li op %i (%s) - R/W %i \n",
 				tag, current_item->op, ops[current_item->op], current_item->pvfs_io_type);
 		queue = queue->next;
 		//the removal procedure will change the next pointer, so we keep it for the while loop
@@ -241,7 +241,7 @@ int remove_request_from_socket(int index, long tag)
 	    list_req_state_comp_curr);
 	if (rs == NULL)
 	{
-		fprintf(stderr,"request remove failed: item not found (tag %i)\n", tag);
+		fprintf(stderr,"request remove failed: item not found (tag %li)\n", tag);
 		exit(-1);
 	}
 
@@ -305,7 +305,7 @@ int add_socket_to_pool(int socket, int counter_part,
 	}
 	s_pool.socket_state_list[s_pool.pool_size-1].counter_socket_index=s_pool.pool_size;
 
-	//Dprintf(D_CACHE," source:%s:%i->target:%s:%i\n",client_ip, client_port, server_ip, server_port);
+	fprintf(stderr,"source:%s:%i->target:%s:%i\n",client_ip, client_port, server_ip, server_port);
 
 	struct ip_application* ipa=ip_weight(client_ip);
 	int weight=ipa->weight;
@@ -313,7 +313,7 @@ int add_socket_to_pool(int socket, int counter_part,
 	int deadline=ipa->deadline;
 	s_pool.socket_state_list[s_pool.pool_size-1].weight=weight;
 	s_pool.socket_state_list[s_pool.pool_size-1].deadline=deadline;
-	//Dprintf(D_CACHE,"connected ip %s has a weight of %i at %i\n",client_ip,weight,app_index);
+	fprintf(stderr,"connected ip %s has a weight of %i at %i\n",client_ip,weight,app_index);
 	s_pool.socket_state_list[s_pool.pool_size-1].app_index=app_index;
 	if (s_pool.pool_size==s_pool.pool_capacity)
 	{

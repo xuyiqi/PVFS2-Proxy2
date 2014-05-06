@@ -206,10 +206,9 @@ void prepare_events()
 				}
 				else
 				{
-					fprintf(stderr,"manually found size %i op %i\n",found_unsent_request->buffer_size, found_unsent_request->op);
+					//fprintf(stderr,"manually found size %i op %i\n",found_unsent_request->buffer_size, found_unsent_request->op);
 					update_socket_current_send(i);
 					assert(s_pool.socket_state_list[i].current_send_item != NULL);
-
 					s_pool.poll_list[i].events |= POLLOUT;
 				}
 			}
@@ -774,7 +773,7 @@ int main(int argc, char **argv)
 								int ret = (*(static_methods[scheduler_index]->sch_update_on_request_completion))((void*)&cmsg);
 								//return value is the whole I/O request size
 								//fprintf(stderr,"flow returning %i\n",ret);
-								if (ret>0 && static_methods[scheduler_index]->sch_self_dispatch==0)
+								if (ret > 0 && static_methods[scheduler_index]->sch_self_dispatch==0)
 								{
 									s_pool.socket_state_list[i].current_receive_item->last_flow = 1;
 									/*cost*/
@@ -818,7 +817,7 @@ int main(int argc, char **argv)
 										}
 
 										struct request_state * current_state= current_receive_item->original_request;
-
+										//fprintf(stderr,"app %i 2increasing\n", app_index);
 										(*(static_methods[scheduler_index]->sch_add_ttl_throughput))
 												(current_state->last_completion, app_index);
 
@@ -832,6 +831,7 @@ int main(int argc, char **argv)
 												app_stats[s].diff=(*(static_methods[scheduler_index]->sch_calculate_diff))(s);
 												if (old_diff>10240 && app_stats[s].diff<=10240)
 												{
+													fprintf(stderr,"triggering non-work-conservingness.2..\n");
 													struct dequeue_reason r;
 													r.complete_size=0;
 													r.event=DIFF_CHANGE;
@@ -853,6 +853,7 @@ int main(int argc, char **argv)
 									r.complete_size=ret;
 									r.event=COMPLETE_IO;
 									r.last_app_index=app_index;
+									r.item=current_item;
 									struct generic_queue_item* new_item = (*(static_methods[scheduler_index]->sch_dequeue))(r);
 									(*(static_methods[scheduler_index]->sch_get_scheduler_info))();
 									if (new_item==NULL)

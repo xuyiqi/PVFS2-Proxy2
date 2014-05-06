@@ -167,6 +167,7 @@ struct request_state * update_socket_current_send(int index)
 			return NULL;
 		}
 		s_pool.socket_state_list[index].current_send_item = rs;
+		assert(s_pool.socket_state_list[index].current_send_item->locked != 1);
 		/*fprintf(stderr,"item found! size %i op %i\n",
 				s_pool.socket_state_list[index].current_send_item->buffer_size,
 				s_pool.socket_state_list[index].current_send_item->op);
@@ -194,7 +195,7 @@ struct request_state * update_socket_current_receive(int index, long tag)
 	//should also be last received item of the tag from the head of the list
 	if (tag < 0 )
 	{
-		fprintf(stderr, "error: tag is negative: %i\n", tag);
+		fprintf(stderr, "error: tag is negative: %li\n", tag);
 		exit(-1);
 	}
 	if (s_pool.socket_state_list[index].current_receive_item == NULL)
@@ -255,7 +256,7 @@ int check_request(int index)
 		{
 
 			new_rs = add_request_to_socket(index, tag);
-			//a request is only created when we first see the whole pvfs header, so even if previous mutliple tries exist
+			//a request is only created when we first see the whole pvfs header, so even if previous multiple tries exist
 			//with bmi tag available, we cannot include the first receive to start at that time.
 			new_rs->first_receive_time = receive_time;
 			new_rs->last_peek_time = peek_time;
@@ -277,7 +278,7 @@ int check_request(int index)
 			new_rs = find_last_request(index, tag);
 			if (new_rs == NULL)
 			{
-				fprintf(stderr,"incomplete old request is null on %i, tag %i\n", index, tag);
+				fprintf(stderr,"incomplete old request is null on %i, tag %lli\n", index, tag);
 				exit(-1);
 			}
 			else
@@ -304,7 +305,7 @@ int check_request(int index)
 		}
 		else if (old_rs!=NULL && tag != old_rs->current_tag)
 		{
-			fprintf(stderr, "tag is %i, current tag is %i, who don't match\n",tag, old_rs->current_tag);
+			fprintf(stderr, "tag is %lli, current tag is %i, who don't match\n",tag, old_rs->current_tag);
 			exit(-1);
 		}
 		else //old_rs == null
@@ -397,6 +398,7 @@ int check_request(int index)
 							r.complete_size=pi->current_data_size;
 							r.event=NEW_IO;
 							r.last_app_index=si->app_index;
+							r.item = NULL;
 							new_rs->current_item=(*(static_methods[scheduler_index]->sch_dequeue))(r);
 							gettimeofday(&tv, 0);
 							update_release_time(index, tv);
@@ -470,6 +472,7 @@ int check_request(int index)
 							r.complete_size=pi->current_data_size;
 							r.event=NEW_IO;
 							r.last_app_index=si->app_index;
+							r.item = NULL;
 							new_rs->current_item=(*(static_methods[scheduler_index]->sch_dequeue))(r);
 							struct timeval tv;
 							gettimeofday(&tv, 0);
@@ -531,6 +534,7 @@ int check_request(int index)
 						r.complete_size = size;//just a place holder
 						r.event = NEW_META;
 						r.last_app_index = si->app_index;
+						r.item = NULL;
 						new_rs->current_item = (*(static_methods[scheduler_index]->sch_dequeue))(r);//get_next_request();
 						//struct timeval tv;
 						gettimeofday(&tv, 0);
@@ -693,7 +697,7 @@ int check_response(int index)//peeking
 			fprintf(stderr,"job size %i last tag %i current tag %i io type %i\n",
 					response_rs->job_size, response_rs->last_tag,
 					response_rs->current_tag, response_rs->pvfs_io_type);
-			fprintf(stderr,"request_rs %i", request_rs);
+			fprintf(stderr,"request_rs %p", request_rs);
 			if (request_rs!=NULL)
 			{
 				fprintf(stderr," tag %i, op %s\n", request_rs->current_tag, ops[request_rs->op]);
@@ -735,7 +739,7 @@ int check_response(int index)//peeking
 				}
 				else
 				{
-					switch (operation){
+					/*switch (operation){
 					case PVFS_SERV_GETATTR:
 					case PVFS_SERV_READDIR:
 					case PVFS_SERV_LISTATTR:
@@ -745,7 +749,7 @@ int check_response(int index)//peeking
 					default:
 						//fprintf(stderr,"%s has minimum cost on response\n", ops[operation]);
 						break;
-					}
+					}*/
 					response_rs->meta_response = 1;
 				}
 				if (operation==PVFS_SERV_GETCONFIG)
@@ -896,9 +900,11 @@ int check_response(int index)//peeking
 
 						if (!timer_stop && first_receive)
 						{
+							//fprintf(stderr,"app %i 1increasing\n", app_index);
 							(*(static_methods[scheduler_index]->sch_add_ttl_throughput))(dist->aggregate_size, app_index);
 							if (!static_methods[scheduler_index]->work_conserving)
 							{
+
 								int s;
 								//here we try to fix the diff change based dispatch first
 								for (s=0;s<num_apps;s++)
@@ -908,6 +914,8 @@ int check_response(int index)//peeking
 											//app_stats[s].app_throughput-total_throughput*app_stats[s].app_weight/total_weight;
 									if (old_diff>10240 && app_stats[s].diff<=10240)
 									{
+
+										fprintf(stderr,"triggering non-work-conservingness.1..\n");
 										struct dequeue_reason r;
 										r.complete_size=0;
 										r.event=DIFF_CHANGE;
@@ -953,6 +961,7 @@ int check_response(int index)//peeking
                     	    gettimeofday(&tv, 0);
                         	update_release_time(new_item->socket_data->unlock_index, tv);
 							struct request_state *new_dispatched = new_item->socket_data->rs;
+							fprintf(stderr,"dispatching item %li\n", new_item->item_id);
 							assert(new_dispatched->locked!=0);
 							new_dispatched->locked = 0;
 							new_dispatched->current_item = new_item;
@@ -991,12 +1000,14 @@ int check_response(int index)//peeking
 						//assuming that the scheduling is work-conserving and proxy-dispatching, the next item
 						//will have to be extracted and dispatched
 						int counter_index=s_pool.socket_state_list[index].counter_socket_index;
+						int app_index=s_pool.socket_state_list[counter_index].app_index;
 					    struct request_state * request_rs = find_request(counter_index, tag, 1);
 						if (request_rs == NULL)
 						{
 							fprintf(stderr,"could not find request state corresponding to a response\n");
 							exit(-1);
 						}
+						app_stats[app_index].completed_requests+=1;
 						struct generic_queue_item* current_item= request_rs->current_item;
 						struct complete_message cmsg;
 						cmsg.complete_size=-1;
@@ -1006,6 +1017,8 @@ int check_response(int index)//peeking
 						//right now, for meta-data operations, this is only recognized and implemented in sfqd_full scheduler
 						//the next one to recognize this is dsfq_full
 						struct dequeue_reason r;
+						r.item = current_item;
+						r.event = COMPLETE_IO;
 						//nothing's in it yet
 						struct generic_queue_item* new_item = (*(static_methods[scheduler_index]->sch_dequeue))(r);
 						if (new_item==NULL)

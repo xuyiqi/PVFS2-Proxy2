@@ -43,7 +43,7 @@
 #include "logging.h"
 #include "proxy2.h"
 #include <unistd.h>
-#include "scheduler_SFQD.h"
+#include "scheduler_SFQD_Full.h"
 #include "heap.h"
 #include "iniparser.h"
 #include "llist.h"
@@ -54,23 +54,38 @@
 int sfqdfull_sorted=0;
 extern struct socket_pool  s_pool;
 extern char* log_prefix;
-#define REDUCER 1024
+#define REDUCER 32
 int sfqdfull_default_weight=1;
 int sfqdfull_depth=1;
 int sfqdfull_current_depth=0;
 int sfqdfull_virtual_time=0;
+int sfqdfull_small_ios = 0;
+
+
 int* sfqdfull_last_finish_tags;
+
 int* sfqdfull_list_queue_count;
 extern long long total_throughput;
 extern int finished[2];
 extern int completerecv[2];
 extern int completefwd[2];
-#define SFQD_FULL_USE_HEAP_QUEUE 0
 
+#define DEFAULT_META_COST 10240 //IN BYTES
+#define SFQD_FULL_USE_HEAP_QUEUE 0
+#define SFQD_FULL_DEFAULT_LARGE_IO_FACTOR 10 //defines the number of depth each large IO occupies, semi-blocking more large IOs
+#define SFQD_FULL_ENABLE_LARGE_IO_BLOCKING 0
+#define SFQD_FULL_LARGE_IO_THRESHOLD 65536
+#define SFQD_FULL_ENABLE_HARD_BLOCK 0
+
+extern int total_weight;
 struct heap * sfqdfull_heap_queue;
 PINT_llist_p sfqdfull_llist_queue;
 int sfqdfull_item_id=0;
 
+int sfqdfull_large_io_factor = SFQD_FULL_DEFAULT_LARGE_IO_FACTOR;
+int sfqdfull_enable_large_io_blocking = SFQD_FULL_ENABLE_LARGE_IO_BLOCKING;
+int sfqdfull_large_io_threshold = SFQD_FULL_LARGE_IO_THRESHOLD;
+int sfqdfull_enable_hard_block = SFQD_FULL_ENABLE_HARD_BLOCK;
 /* a simple version of local SFQD who takes meta-data ops as well
  * Full means all the commands are probably queueed now
  *
@@ -86,6 +101,20 @@ int sfqdfull_add_ttl_tp(int this_amount, int app_index)
 	total_throughput+=this_amount;
     app_stats[app_index].byte_counter=app_stats[app_index].byte_counter+this_amount;
     app_stats[app_index].app_throughput=app_stats[app_index].app_throughput+this_amount;
+    app_stats[app_index].req_go=app_stats[app_index].req_go+1;
+}
+
+long long sfqdfull_calculate_diff(int app_index)
+{
+	long long diff = app_stats[app_index].app_throughput*1.0f-total_throughput*1.0f*app_stats[app_index].app_weight/(float)total_weight;
+
+
+	fprintf(stderr,"diff is %lli = %lli - %lli * %i / %i \n",diff,
+			app_stats[app_index].app_throughput,
+			total_throughput,
+			app_stats[app_index].app_weight,
+			total_weight);
+	return diff;
 }
 
 const struct scheduler_method sch_sfqd_full = {
@@ -100,6 +129,7 @@ const struct scheduler_method sch_sfqd_full = {
     .sch_get_scheduler_info = sfqdfull_get_scheduler_info,
     .sch_is_idle = sfqdfull_is_idle,
     .sch_current_size = sfqdfull_current_size,
+    .sch_calculate_diff = sfqdfull_calculate_diff,
     .sch_add_ttl_throughput = sfqdfull_add_ttl_tp,
     .sch_self_dispatch = 0, //i'm work-conserving, dispatched by the framework instead of within threads of the scheduler
     .sch_accept_meta =1
@@ -186,6 +216,10 @@ int sfqdfull_add_item_to_queue(struct generic_queue_item* item)
 			fprintf(stderr,"sfqd_full queue insertion error!\n");
 			exit(-1);
 		}
+		else
+		{
+			sfqdfull_llist_queue = PINT_llist_sort(sfqdfull_llist_queue,list_sfqd_sort_comp);
+		}
 
 
 	}
@@ -227,7 +261,7 @@ int sfqdfull_current_size(struct request_state * original_rs, long long actual_d
 
 }
 
-#define DEFAULT_META_COST 10240 //IN BYTES
+
 
 int sfqdfull_get_finish_tag(int length, int weight, int start_tag,enum PVFS_server_op op)
 {
@@ -278,11 +312,11 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	switch (pi->op){
 	case PVFS_SERV_SMALL_IO:
 	case PVFS_SERV_IO:
-		//fprintf(stderr, "IO type %s\n", ops[pi->op]);
+		fprintf(depthtrack, "IO type %s ", ops[pi->op]);
 		break;
 
 	default:
-		//fprintf(stderr, "Meta type %s, code %i\n", ops[pi->op], pi->op);
+		fprintf(depthtrack, "Meta type %s, code %i ", ops[pi->op], pi->op);
 
 
 		break;
@@ -293,7 +327,14 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	r_socket_index = si->request_socket;
 	d_socket_index = si->data_socket;
 
-	length = pi->current_data_size;
+	if (pi->op != PVFS_SERV_IO && pi->op != PVFS_SERV_SMALL_IO)
+	{
+		length = DEFAULT_META_COST;
+	}
+	else
+	{
+		length = pi->current_data_size;
+	}
 	tag=  pi->tag;
 	io_type= pi->io_type;
 	req_size=pi->req_size;
@@ -321,9 +362,26 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	struct sfqdfull_queue_item * item = (struct sfqdfull_queue_item *)(malloc(sizeof(struct sfqdfull_queue_item)));
 	generic_item->embedded_queue_item=item;
 
+	item->depth = 1;
+
+	if (length <= sfqdfull_large_io_threshold)
+	{
+		sfqdfull_small_ios++;
+		//fprintf(stderr,"small ios increased to %i\n", sfqdfull_small_ios);
+	}
+	else
+	{
+		item->depth = sfqdfull_large_io_factor;
+		//fprintf(stderr,"large ios %i\n", length);
+	}
+
+
+	//fprintf(depthtrack, "length %i depth %i\n", length, item->depth);
+
 	item->queuedtime = now;
 	item->start_tag=start_tag;
 	item->finish_tag=finish_tag;
+	//fprintf(stderr,"app %i start %i end %i\n",app_index, start_tag, finish_tag);
 
 	item->data_socket_index=d_socket_index;
 	item->request_socket_index=r_socket_index;
@@ -334,6 +392,7 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->aggregate_size=pi->aggregate_size;
 	item->strip_size=pi->strip_size;
 	generic_item->item_id=sfqdfull_item_id++;
+	//fprintf(stderr,"adding new item %li\n", generic_item->item_id);
 
 	char bptr[20];
     struct timeval tv;
@@ -349,6 +408,10 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->request_port= s_pool.socket_state_list[r_socket_index].port;
 
 	item->task_size=length;//derived from current_datat_size
+
+
+
+
 	item->got_size=0;
 
 	//fprintf(stderr,"task size:%i/%i\n",length, pi->aggregate_size);
@@ -359,6 +422,10 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->socket_tag=socket_tag;
 	item->app_index=app_index;
 	item->stream_id=app_stats[app_index].stream_id++;
+
+	fprintf(depthtrack,"enqueuing app %i, id %li, start %i, end %i\n",app_index,
+			generic_item->item_id, start_tag, finish_tag);
+
 
 	item->request_socket=s_pool.socket_state_list[r_socket_index].socket;
 	item->io_type=io_type;
@@ -380,16 +447,57 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	}
 
 	int dispatched=0;
-	if (sfqdfull_current_depth<sfqdfull_depth)//heap_empty(heap_queue))
+	//fprintf(stderr, "adding from %i + %i = %i\n ",sfqdfull_current_depth, item->depth, sfqdfull_current_depth + item->depth);
+
+	//if (sfqdfull_small_ios > 0 && length > sfqdfull_large_io_threshold)
+		//fprintf(depthtrack, "small io activated\n");
+	//else
+		//fprintf(depthtrack, "small io deactivated\n");
+
+	if (sfqdfull_current_depth +
+			((sfqdfull_small_ios > 0 && sfqdfull_enable_large_io_blocking || sfqdfull_enable_hard_block) ? item->depth : 1) <= sfqdfull_depth)
+		//a shortcircuit check. the best case scenario must be met
 	{
-		dispatched=1;
-		sfqdfull_current_depth++;
-		//fprintf(stderr, " scheduler depth increased to %i\n",sfqdfull_current_depth);
+		//dispatched = 1;
+		PINT_llist_p l_p = sfqdfull_llist_queue;
+		assert(l_p != NULL && l_p->next != NULL);
+		if (l_p!=NULL)
+			l_p = l_p->next;
+		int count=0;
+		struct request_state * last = NULL;
+
+		for (; l_p; l_p = l_p->next)
+		{
+			struct generic_queue_item * next  = (struct generic_queue_item *)(l_p->item);
+			struct sfqdfull_queue_item * next_queue_item = (struct sfqdfull_queue_item*)(next->embedded_queue_item);
+
+			int tentative_depth = (sfqdfull_small_ios > 0 && sfqdfull_enable_large_io_blocking || sfqdfull_enable_hard_block) ? next_queue_item->depth : 1;
+			if (tentative_depth + sfqdfull_current_depth <= sfqdfull_depth && next != generic_item)
+			{
+				dispatched = 0;
+				break;
+			}
+			if (tentative_depth + sfqdfull_current_depth <= sfqdfull_depth && next == generic_item)
+			{
+				dispatched = 1;
+				break;
+			}
+		}
+		//sfqdfull_current_depth+=item->depth;
+		//fprintf(stderr, "scheduler depth increased to %i\n",sfqdfull_current_depth);
 		//this means the queue is empty before adding item to it.
 	}
 	else
 	{
 		//fprintf(stderr," scheduler blocked\n");
+	}
+	if (dispatched == 1)
+	{
+		//fprintf(stderr,"sfqdfull immediately dispatching item %li %i size %i\n", generic_item->item_id, item->depth, length);
+	}
+	else
+	{
+		//fprintf(stderr,"sfqdfull blocked by item %li %i size %i\n", generic_item->item_id, item->depth, length);
 	}
 	app_stats[app_index].req_come+=1;
 	return dispatched;
@@ -399,7 +507,7 @@ int sfqdfull_enqueue(struct socket_info * si, struct pvfs_info* pi)
 
 void sfqdfull_get_scheduler_info()
 {
-	//fprintf(stderr,"depth remains at %i", current_depth);
+	//fprintf(stderr,"depth is at %i", sfqdfull_current_depth);
 	//fprintf(stderr," current queue has %i items\n",heap_queue->all_count);
 }
 
@@ -408,20 +516,22 @@ int sfqdfull_update_on_request_completion(void* arg)
 
 
 	struct complete_message * complete = (struct complete_message *)arg;
-	struct generic_queue_item * current_item = (complete->current_item);
-
-	struct sfqdfull_queue_item * sfqdfull_item = (struct sfqdfull_queue_item * )(current_item->embedded_queue_item);
-	//fprintf(stderr,"completed size: %i\n", complete->complete_size);
 	if (complete->complete_size==-1)
 	{
 		//this is a skip flag for response messages
 		//there is no in-fly task, any response should be followed by a complete message
 		//although you might argue that you could receive multiple times before a complete listdir is received
 		//finished[sfqdfull_item->app_index]++;
-		app_stats[sfqdfull_item->app_index].completed_requests+=1;
+		//app_stats[sfqdfull_item->app_index].completed_requests+=1;
 		return 0;
 
 	}
+
+
+	struct generic_queue_item * current_item = (complete->current_item);
+
+	struct sfqdfull_queue_item * sfqdfull_item = (struct sfqdfull_queue_item * )(current_item->embedded_queue_item);
+	//fprintf(stderr,"completed size: %i\n", complete->complete_size);
 
 
 	//struct proxy_message * request = (struct proxy_message)(complete->proxy_message);
@@ -436,7 +546,7 @@ int sfqdfull_update_on_request_completion(void* arg)
 		//fprintf(depthtrack, "response time of class %i: %i ms\n", sfqdfull_item->app_index, (int)(diff.tv_sec*1000+diff.tv_usec/1000));
 		average_resp_time[sfqdfull_item->app_index]+=(diff.tv_sec*1000+diff.tv_usec/1000);
 		//finished[sfqdfull_item->app_index]++;
-		app_stats[sfqdfull_item->app_index].completed_requests+=1;
+		//app_stats[sfqdfull_item->app_index].completed_requests+=1;
 		if (sfqdfull_item->task_size==0)
 		{
 			return 1;
@@ -480,6 +590,40 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 {
 
 	//int last_io_type = r.complete_size;
+	//fprintf(stderr, "old item %i", r.item);
+
+	int last_io_depth;
+	if (r.event == COMPLETE_IO) last_io_depth = 1;
+	else last_io_depth = 0;
+	if (r.event == COMPLETE_IO && r.item != NULL)
+	{
+		//fprintf(stderr, " %i", r.item->embedded_queue_item);
+		if (r.item->embedded_queue_item != NULL)
+		{
+			last_io_depth = ((struct sfqdfull_queue_item*)(r.item->embedded_queue_item))->depth;
+			//fprintf(stderr, " depth %i, item id %li\n", last_io_depth, r.item->item_id);
+		}
+		else
+		{
+			//fprintf(stderr, "complete io but no embedded queue item\n");
+			last_io_depth = 0;
+		}
+	}
+	else
+	{
+		//fprintf(stderr, "new item? %d %p\n", r.event, r.item);
+		last_io_depth = 0;
+	}
+
+	if (r.event == COMPLETE_IO && last_io_depth == 1)
+	{
+		sfqdfull_small_ios--;
+		//fprintf(stderr,"small ios decreased to %i\n", sfqdfull_small_ios);
+		assert(sfqdfull_small_ios >= 0);
+	}
+
+
+	//fprintf(stderr, "\n");
 	struct generic_queue_item * next;//for heap and list
 	//free up current item
 	struct generic_queue_item * next_item = NULL; //for actual list item removal
@@ -503,40 +647,64 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
     tp = tv.tv_sec;
     strftime(bptr, 10, "[%H:%M:%S", localtime(&tp));
     sprintf(bptr+9, ".%06ld]", (long)tv.tv_usec);
-
+    int reduce_depth = 0;
+    int tentative_depth = 0;
 	//fprintf(stderr,"%s %s, finished %i complete recv %i, completefwd %i\n",	bptr, log_prefix, finished[0], completerecv[0], completefwd[0]);
 	if (SFQD_FULL_USE_HEAP_QUEUE==0)
 	{
 		if (sfqdfull_sorted==0)
 		{
-			sfqdfull_llist_queue = PINT_llist_sort(sfqdfull_llist_queue,list_sfqd_sort_comp);
+			//sfqdfull_llist_queue = PINT_llist_sort(sfqdfull_llist_queue,list_sfqd_sort_comp);
 			sfqdfull_sorted=1;
 		}
 
 		int i;
-		/*fprintf(stderr,"%s %s ",bptr,log_prefix);
-		for (i=0;i<num_apps;i++)
-		{
-			fprintf(stderr,"app%i:%i,", i, sfqdfull_list_queue_count[i]);
-		}
-		fprintf(stderr,"\n");
-		*/
-		next  = (struct generic_queue_item *)PINT_llist_head(sfqdfull_llist_queue);
-		if (next!=NULL)
-		{
-			next_item = (struct generic_queue_item *)PINT_llist_rem(sfqdfull_llist_queue, (void*)next->item_id,  list_req_comp);
 
+		PINT_llist_p l_p = sfqdfull_llist_queue;
+		if (l_p!=NULL)
+			l_p = l_p->next;
+		int count=0;
+		struct request_state * last = NULL;
+
+
+
+		if (r.event == COMPLETE_IO)
+		{
+			if (sfqdfull_enable_hard_block)
+			{
+				reduce_depth = last_io_depth;
+			}
+			else
+			{
+				reduce_depth = 1;
+			}
+		}
+		for (; l_p; l_p = l_p->next)
+		{
+			next  = (struct generic_queue_item *)(l_p->item);
+			next_queue_item = (struct sfqdfull_queue_item*)(next->embedded_queue_item);
+			tentative_depth = (sfqdfull_small_ios > 0 && sfqdfull_enable_large_io_blocking || sfqdfull_enable_hard_block) ? next_queue_item->depth : 1;
+
+			if (tentative_depth + sfqdfull_current_depth - reduce_depth <= sfqdfull_depth)
+			{
+				//fprintf(stderr,"new item %li real depth %i + current depth %i - last depth %i = %i\n",
+						//next->item_id, next_queue_item->depth, sfqdfull_current_depth, last_io_depth,
+						//tentative_depth + sfqdfull_current_depth - reduce_depth );
+				next_item = (struct generic_queue_item *)PINT_llist_rem(sfqdfull_llist_queue, (void*)next->item_id,  list_req_comp);
+				break;
+			}
 		}
 		if (next_item!=NULL)
 		{
 			next_queue_item = (struct sfqdfull_queue_item *)(next_item->embedded_queue_item);
 			sfqdfull_list_queue_count[next_queue_item->app_index]--;
 			found=1;
-			//fprintf(stderr,"dispatching \n");
+
+			fprintf(depthtrack,"dispatching app %i, id %li, start %i, end %i\n",
+					next_queue_item->app_index, next_item->item_id, next_queue_item->start_tag, next_queue_item->finish_tag);
 			int app_index=next_queue_item->app_index;
 			if (next_queue_item->app_index==1 && sfqdfull_list_queue_count[0]==0){
 				//fprintf(stderr,"%s %s, ********************************************** warning app 0 has no item left in the queue\n", bptr, log_prefix);
-
 			}
 		}
 
@@ -546,11 +714,17 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 	{
 		//current_node = hn;
 		sfqdfull_virtual_time=next_queue_item->start_tag;
+		//depending hardblock or not, difference between this IO and last IO will be added to the updated depth
+		//hard: tentative_depth-last_io
+		//soft: 1-last_io
+		//sfqdfull_current_depth = sfqdfull_current_depth + next_queue_item->depth - last_io_depth;
 
-		fprintf(depthtrack,"%s %s dispatching tag %i app%i on %s\n", bptr, log_prefix,
-				next_queue_item->socket_tag, next_queue_item->app_index,
+		sfqdfull_current_depth = sfqdfull_current_depth + tentative_depth - reduce_depth;
+
+		/*fprintf(stderr,"%s %s dispatching tag %i starttag %i app %i on %s\n", bptr, log_prefix,
+				next_queue_item->socket_tag, next_queue_item->start_tag, next_queue_item->app_index,
 				s_pool.socket_state_list[next_queue_item->request_socket_index].ip);
-
+*/
 
 
 		int app_index=next_item->socket_data->app_index;
@@ -561,15 +735,19 @@ struct generic_queue_item * sfqdfull_dequeue(struct dequeue_reason r)
 		struct timeval dispatch_time, diff;
 		gettimeofday(&dispatch_time, 0);
 		next_queue_item->dispatchtime = dispatch_time;
-		double ratio = ((float)(app_stats[0].dispatched_requests))/((float)app_stats[1].dispatched_requests);
-		//fprintf(stderr,"%s %s $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ instant ratio is %d/%d=%f\n",
-		//		bptr, log_prefix, app_stats[0].dispatched_requests, app_stats[1].dispatched_requests, ratio);
-		//fprintf(stderr, " scheduler depth unchanged at %i\n",sfqdfull_current_depth);
+		/*double ratio = ((float)(app_stats[0].dispatched_requests))/((float)app_stats[1].dispatched_requests);
+		fprintf(stderr,"%s %s instant ratio is %d/%d=%f\n",
+				bptr, log_prefix, app_stats[0].dispatched_requests, app_stats[1].dispatched_requests, ratio);
+		*/
+		//fprintf(stderr, " new item %i\n", next_item);
+		//fprintf(stderr, " scheduler depth changed at %i by item %li\n",sfqdfull_current_depth, next_item->item_id);
 		return next_item;
 	}
 	else
 	{
-		sfqdfull_current_depth--;
+		//fprintf(stderr, "\n");
+		//sfqdfull_current_depth -= last_io_depth;
+		sfqdfull_current_depth-=reduce_depth;
 		//fprintf(stderr, " scheduler depth decreased to %i\n",sfqdfull_current_depth);
 		return NULL;
 	}
@@ -582,5 +760,23 @@ int sfqdfull_load_data_from_config (dictionary * dict)
 	fprintf(stderr,"%s\n",depth_entry);
 	sfqdfull_depth=iniparser_getint(dict, depth_entry ,sfqdfull_depth);
 	fprintf(stderr,"SFQD_Full using depth:%i\n",sfqdfull_depth);
+
+	char largefactor_entry[100];
+	snprintf(largefactor_entry, 100, "%s:largefactor", SFQD_FULL_SCHEDULER);
+	fprintf(stderr,"%s\n",largefactor_entry);
+	sfqdfull_large_io_factor=iniparser_getint(dict, largefactor_entry, sfqdfull_large_io_factor);
+	fprintf(stderr,"SFQD_Full using largefactor:%i\n", sfqdfull_large_io_factor);
+
+	char enablelargeblock_entry[100];
+	snprintf(enablelargeblock_entry, 100, "%s:enablelargeblock", SFQD_FULL_SCHEDULER);
+	fprintf(stderr,"%s\n",enablelargeblock_entry);
+	sfqdfull_enable_large_io_blocking=iniparser_getint(dict, enablelargeblock_entry ,sfqdfull_enable_large_io_blocking);
+	fprintf(stderr,"SFQD_Full using largeblock:%i\n",sfqdfull_enable_large_io_blocking);
+
+	char enablehardblock_entry[100];
+	snprintf(enablehardblock_entry, 100, "%s:hardblock", SFQD_FULL_SCHEDULER);
+	fprintf(stderr,"%s\n",enablehardblock_entry);
+	sfqdfull_enable_hard_block=iniparser_getint(dict, enablehardblock_entry ,sfqdfull_enable_hard_block);
+	fprintf(stderr,"SFQD_Full using hardblock:%i\n",sfqdfull_enable_hard_block);
 
 }

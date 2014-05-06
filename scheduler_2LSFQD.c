@@ -413,7 +413,7 @@ int twolsfqd_enqueue(struct socket_info * si, struct pvfs_info* pi)
 	item->aggregate_size=pi->aggregate_size;
 	item->strip_size=pi->strip_size;
 	generic_item->item_id=twolsfqd_item_id++;
-	fprintf(stderr,"iiiiiiiiiiiiiii item id is %i\n", generic_item->item_id);
+	fprintf(stderr,"iiiiiiiiiiiiiii item id is %li\n", generic_item->item_id);
 
 	char bptr[20];
     struct timeval tv;
@@ -582,7 +582,7 @@ struct generic_queue_item* twolsfqd_dequeue()
 				next = (struct generic_queue_item *)
 						PINT_llist_rem(sarc_credit_list[queue_index], (void*)temp->item_id,  list_req_comp);
 				//we are just trying to grab the same next_item
-				fprintf(stderr,"item id is %i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", temp->item_id);
+				fprintf(stderr,"item id is %li xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", temp->item_id);
 				assert(next!=NULL);
 
 				next_item = (struct twolsfqd_queue_item *)(next->embedded_queue_item);
@@ -690,8 +690,8 @@ int twolsfqd_edf_dequeue_all(int enqueued_socket)
 
 		item = (struct twolsfqd_queue_item*)(((struct generic_queue_item *)queue->item)->embedded_queue_item);
 
-		fprintf(stderr,"deadline:%i.%i, now: %i.%i\n", item->deadline.tv_sec, item->deadline.tv_usec,
-		now.tv_sec, now.tv_usec	);
+		fprintf(stderr,"deadline:%i.%i, now: %i.%i\n", (int)item->deadline.tv_sec, (int)item->deadline.tv_usec,
+		(int)now.tv_sec, (int)now.tv_usec	);
 		if ( timercmp(&(item->deadline), &now, <=))
 		{
 			fprintf(depthtrack,"missing dealine %i.%06i <= now %i.%06i\n",
@@ -774,7 +774,7 @@ struct generic_queue_item* twolsfqd_edf_dequeue()
 
 	if (next_item!=NULL)
 	{
-		fprintf(stderr,"$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ dispatching %i\n", item->item_id);
+		fprintf(stderr,"$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ dispatching %li\n", item->item_id);
 		struct twolsfqd_queue_item * twolsfqd_item = (struct twolsfqd_queue_item *)(next_item->embedded_queue_item);
 		struct timeval dispatch_time, diff;
 		gettimeofday(&dispatch_time, 0);
@@ -989,7 +989,7 @@ int twolsfqd_edf_complete(void * arg)
 
 	current_item = (complete->current_item);
 	twolsfqd_item = (struct twolsfqd_queue_item * )(current_item->embedded_queue_item);
-	fprintf(stderr,"got from item %i on socket %i\n", current_item->item_id, complete->complete_size);
+	fprintf(stderr,"got from item %li on socket %i\n", current_item->item_id, complete->complete_size);
 	if (complete->complete_size>0)
 	{
 
@@ -1037,7 +1037,7 @@ int twolsfqd_edf_complete(void * arg)
 		timewindow_total_resp+=new_resp->resp_time;
 
 		fprintf(depthtrack, "%i response time of class %i: %i ms on ip %s\n",
-				n.tv_sec,twolsfqd_item->app_index, new_resp->resp_time, s_pool.socket_state_list[twolsfqd_item->request_socket_index].ip);
+				(int)n.tv_sec,twolsfqd_item->app_index, new_resp->resp_time, s_pool.socket_state_list[twolsfqd_item->request_socket_index].ip);
 		//fprintf(stderr, "response time of class %i: %i ms on ip %s\n",
 				//twolsfqd_item->app_index, new_resp->resp_time, s_pool.socket_state_list[twolsfqd_item->request_socket_index].ip);
 

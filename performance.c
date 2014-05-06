@@ -161,7 +161,8 @@ void* work_report(void * arg)
 		{
 
 			struct performance_sta sta=counter_output(i,seconds);//locked function
-			fprintf(depthtrack, "%s %s Performance Result for App %i: %3.9f\n",log_prefix, bptr,i+1, sta.throughput);
+			fprintf(depthtrack, "%s %s Performance Result for App %i: %3.9f, %i\n",
+					log_prefix, bptr,i+1, sta.throughput, sta.req_go);
 			//fprintf(stderr,"small->%lli; large->%lli\n",small_io_size, large_io_size);
 			//fprintf(stderr,"%s Performance Result for App %i: %3.9f MB/S, come: %i, go:%i, delay:%i, blocked:%i, current_depth:%i\n", bptr,i+1, sta.throughput,sta.req_come,sta.req_go,sta.req_delay,sta.block_count,current_depth);
 			//Dprintf(D_AUTH,"%s Performance Result for App %i: %3.9f MB/S, come: %i, go:%i, delay:%i, blocked:%i, current_depth:%i\n", bptr,i+1, sta.throughput,sta.req_come,sta.req_go,sta.req_delay,sta.block_count,current_depth);
