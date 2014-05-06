@@ -150,13 +150,13 @@ Setup
 	 [--counter=0] [--stat=stat.txt] [--cost_method=0]
 	 [--=proxy_config=/etc/pvfs2-fs.conf]
 	 ```
-     The cache_size(in bytes) has a limit – it has to be larger than the size of the configuration file (/etc/pvfs2-fs.conf by default on the server nodes).  50-100KB seems to be a reasonably optimal size according to our program tuning and testing.  The cache sits on each socket bound to a client or the server response (initiated by the client and the server).  Thus, setting an appropriate amount of cache keeps the system healthy.
-     The counter flag indicates whether or not to start the periodical counter for every few seconds' statistics.
-     The stat flag identifies the name of the log file for final statistic output when it receives SIG_TERM.
-     The cost_method flag indicates whether or not to use pure payload size as the calculation for cost (default is yes).
-     The scheduler can be turned off using the --scheduler=none flag.  Default scheduler is SFQD.
-     The config flag can be used to use a different file name/location for weights definition.
-     The proxy config means the pvfs2 server configuration file the server is using and the proxy needs to figure out other server/proxy locations
+     - The cache_size(in bytes) has a limit – it has to be larger than the size of the configuration file (/etc/pvfs2-fs.conf by default on the server nodes).  50-100KB seems to be a reasonably optimal size according to our program tuning and testing.  The cache sits on each socket bound to a client or the server response (initiated by the client and the server).  Thus, setting an appropriate amount of cache keeps the system healthy.
+     - The counter flag indicates whether or not to start the periodical counter for every few seconds' statistics.
+     - The stat flag identifies the name of the log file for final statistic output when it receives SIG_TERM.
+     - The cost_method flag indicates whether or not to use pure payload size as the calculation for cost (default is yes).
+     - The scheduler can be turned off using the --scheduler=none flag.  Default scheduler is SFQD.
+     - The config flag can be used to use a different file name/location for weights definition.
+     - The proxy config means the pvfs2 server configuration file the server is using and the proxy needs to figure out other server/proxy locations
      
      Use ```./proxy2 --help``` to see the available switches and options.
      For example, the following command starts the proxy with port 3335 and cache size of 70K bytes:
