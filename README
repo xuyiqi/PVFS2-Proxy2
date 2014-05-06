@@ -32,7 +32,7 @@ Requirements
 Changes
 ====================
 * Changes from v1.0
-  WRF, iozone support (and many others such as metarates, mpi_io_test)
+  WRF, iozone support (and many others such as metarates, mpi_io_test) (Meta data scheduling support is added in SFQD_Full scheduler)
   Fixed memory leaking
   Fixed EOF bug
   
@@ -43,7 +43,7 @@ Changes
   Implemented Full Meta data support (no scheduling yet), tested over multi-md-test.c
   
 * Changes from v0.7
-  Implemented Two-level(SARC-AVATAR) scheduling
+  Implemented Two-level(SARC-AVATAR) scheduling (2LSFQD)
   
 * Changes from v0.6
   Eliminated double buffering
@@ -174,7 +174,7 @@ Setup
   Use "umount" to unmount the PVFS2 partition (if you started it by using kernle module) and then kill the proxy daemons.
   
 * Using Automatic Test Script
-	* testx.pl is the latest script to execute test cases and exercise a variety of workloads on the native/virtualized PVFS2. The script does a sweep of parameters line by line (i.e. it does not recognize the key-value pair as in .ini files, instead it recognizes which line has what meanings. The key=value pattern of each line is just a way to help remember what each line means. The script will take the B value from A=B line content, and anything after B (e.g. C in the form of A=B=C works as your own additional comment to save extra allowed values for instance). If any equal sign is needed in the value, it should be represented by pipie ('|'), which will be replaced by an equal sign later.
+	* testx.pl is the latest script to execute test cases and exercise a variety of workloads on the native/virtualized PVFS2. The script does a sweep of parameters line by line (i.e. it does not recognize the key-value pair as in .ini files, instead it recognizes which line has what meanings. The key=value pattern of each line is just a way to help remember what each line means. The script will take the B value from A=B line content, and anything after B (e.g. C in the form of A=B=C works as your own additional comment to save extra allowed values for instance). If any equal sign is needed in the value, it should be represented by pipe ('|'), which will be replaced by an equal sign later.
 	
 		The script does the following:
 		- Accept workload parameters, including workload types: IOR, BTIO, metarates, multi-md-test, dummy (sleep), wrf; and durations, client nodes, access pattern, QoS, # processes, etc
