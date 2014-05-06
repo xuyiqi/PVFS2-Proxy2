@@ -6,7 +6,7 @@ OBJSR = performance.o dictionary.o iniparser.o cost_model_history.o sockio.o sch
 all:	proxy2
 
 proxy2: ${OBJSR}
-	${CC} ${CFLAGS} ${LDFLAGS} ${OBJSR} -o proxy2
+	${CC} ${CFLAGS} ${OBJSR} ${LDFLAGS} -o proxy2
 	
 cost_model_history.o: cost_model_history.c cost_model_history.h	
 	$(CC) $(CFLAGS) -c cost_model_history.c

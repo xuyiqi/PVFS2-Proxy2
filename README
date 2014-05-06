@@ -95,13 +95,13 @@ Installation
   No need to configure for the moment.
 
 * Build Proxy:
-  Use "make" to build the binaries.
+  Use ```make``` to build the binaries.
 
 * Install Proxy:
   Currently no installation is needed.
 
 * Rebuild Proxy:
-  Use "make clean" to remove the generated binaries.
+  Use ```make clean``` to remove the generated binaries.
   Build Proxy again.
 
 * Uninstall Proxy:
@@ -121,9 +121,9 @@ Setup
      - When running only using the pvfs2-command tools, change the configuration of the PVFS2 client by editing /etc/pvfs2tab(or the tab file you choose for the client/tool to see) and change its port number to the one your proxy is running on.
 
      For example change the following (original default PVFS2 serve port is 3334):
-        tcp://pvfss321:3334/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0
+        ```tcp://pvfss321:3334/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0```
 	 to:
-        tcp://pvfss321:3335/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0
+        ```tcp://pvfss321:3335/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0```
 
      - When running using kernel module and mount approach, this step can be skipped, and no more change on the client is necessary.  However, additional steps are needed to 1) set the mount point to port 3335; 2) install kernel module 3) start client daemon process 4) mount the file system on the client
      
@@ -142,7 +142,7 @@ Setup
      Note: All the servers in the server configuration file will be disguised as a different location (change of ports to redirect to the proxy) when the proxy is working and the contact from a client is made through the proxy.  Thus, all the running servers should have a same copy of proxy running with the same parameters (port).  It can happen that some clients will mount their remote servers from the original ports, but that still requires the proxy to exist on every node in case another client needs to contact this server via the proxy on another server.
 
   3. Start the proxy on the file system server by
-     "./proxy2 [--port=port_number] [--buffer=cache_size] [--logging=default|all|none|debug|cache] [--delay=poll_timeout] [--scheduler=SFQD|DSFQ|vDSFQ|SFQD_Full|2LSFQD|none] [--config=weights.ini] [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]".
+     ```./proxy2 [--port=port_number] [--buffer=cache_size] [--logging=default|all|none|debug|cache] [--delay=poll_timeout] [--scheduler=SFQD|DSFQ|vDSFQ|SFQD_Full|2LSFQD|none] [--config=weights.ini] [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]```
      The cache_size(in bytes) has a limit – it has to be larger than the size of the configuration file (/etc/pvfs2-fs.conf by default on the server nodes).  50-100KB seems to be a reasonably optimal size according to our program tuning and testing.  The cache sits on each socket bound to a client or the server response (initiated by the client and the server).  Thus, setting an appropriate amount of cache keeps the system healthy.
      The counter flag indicates whether or not to start the periodical counter for every few seconds' statistics.
      The stat flag identifies the name of the log file for final statistic output when it receives SIG_TERM.
@@ -151,27 +151,34 @@ Setup
      The config flag can be used to use a different file name/location for weights definition.
      The proxy config means the pvfs2 server configuration file the server is using and the proxy needs to figure out other server/proxy locations
      
-     Use "./proxy2 --help" to see the available switches and options.
+     Use ```./proxy2 --help``` to see the available switches and options.
      For example, the following command starts the proxy with port 3335 and cache size of 70K bytes:
 
-     ./proxy2 --port=3335 --buffer=716800
+     ```./proxy2 --port=3335 --buffer=716800```
 
      Make sure the initial output of the proxy confirms your input parameters are chosen and running correctly.
 
   4. Start executing test programs and verify the sanity and performance by
 
-     * “pvfs2-ping -m /mnt/pvfs2”
+     * ```pvfs2-ping -m /mnt/pvfs2```
      * Execute wireshark and listen on PVFS specific messages to make sure all the traffic goes through the designated port (3335 in the example) rather than the original native server port (3334 by default).
      * Use IOR2 in MPIIO  (compiled with PVFS2 support) to test communication directly between clients and proxyies/servers.  Current implementation only includes WRITE operation for PVFS scheduler.  It is only limited to IOR2 tests with blocksize of multiples of transfersize*number of stripped servers.
      * To test using PVFS2 protocol support in MPIIO: 
-       "/home/users/software/mpich2-1.2.1p1/bin/mpiexec -machinefile tests/machinefile.1 -n 2 /home/users/software/IOR/src/C/IOR -a MPIIO -o pvfs2:/home/users/yiqi/mnt/t4 -wk -t 1m -b 20m"
+       ```
+	   /home/users/software/mpich2-1.2.1p1/bin/mpiexec -machinefile tests/machinefile.1 -n 2 /home/users/software/IOR/src/C/IOR -a MPIIO -o pvfs2:/home/users/yiqi/mnt/t4 -wk -t 1m -b 20m
+	   ```
      * To manually setup asymmtric environment on the server:
-       "pvfs2-touch /home/users/yiqi/mnt/t6 -l tcp://c1n2:3334" to specify the new file's own server layout/distribution.
+       ```
+	   pvfs2-touch /home/users/yiqi/mnt/t6 -l tcp://c1n2:3334
+	   ```
+	   to specify the new file's own server layout/distribution.
      * For how to let MPICH2 talk PVFS:
-       http://pvfs.org/cvs/pvfs-2-8-branch-docs/doc//pvfs2-quickstart/pvfs2-quickstart.php#SECTION00090000000000000000     
+	```
+	http://pvfs.org/cvs/pvfs-2-8-branch-docs/doc//pvfs2-quickstart/pvfs2-quickstart.php#SECTION00090000000000000000
+	```
      
 * Destroy PVFS2 proxy:
-  Use "umount" to unmount the PVFS2 partition (if you started it by using kernle module) and then kill the proxy daemons.
+  Use "_umount_" to unmount the PVFS2 partition (if you started it by using kernle module) and then kill the proxy daemons.
   
 * Using Automatic Test Script
 	* testx.pl is the latest script to execute test cases and exercise a variety of workloads on the native/virtualized PVFS2. The script does a sweep of parameters line by line (i.e. it does not recognize the key-value pair as in .ini files, instead it recognizes which line has what meanings. The key=value pattern of each line is just a way to help remember what each line means. The script will take the B value from A=B line content, and anything after B (e.g. C in the form of A=B=C works as your own additional comment to save extra allowed values for instance). If any equal sign is needed in the value, it should be represented by pipe ('|'), which will be replaced by an equal sign later.
@@ -198,7 +205,7 @@ Setup
 Logging
 ==========
 
-     For performance and simplicity, currently the log data is by default written to /var/tmp/proxy2.log.
+	For performance and simplicity, currently the log data is by default written to /var/tmp/proxy2.log.
 
 Support
 ==========
