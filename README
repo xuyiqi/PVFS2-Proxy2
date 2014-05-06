@@ -192,7 +192,7 @@ Setup
 		- sets up PVFS2 mount point (VFS) or entry point (MPI-IO)
 		- terminates the experiments based on policy (WAIT, TIMED, or ANY)
 		- cleans up and does post-processing on the logs from various sources
-		
+	* For detailed configurations, please visit the wiki page https://github.com/xuyiqi/PVFS2-Proxy2/wiki/Using-the-test-script-(Test-script-configuration-file).
 		
 
 Logging
