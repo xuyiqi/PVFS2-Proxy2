@@ -27,7 +27,7 @@ Introduction
 Requirements
 ===============
 
-  PVFS2 Proxy is written in C.  There are no special libraries required by the proxy.  It can be compiled successfully on most mainstream distributions of Linux kernels.
+  PVFS2 Proxy is written in C.  There are no special libraries required by the proxy.  It can be compiled successfully on most mainstream distributions of Linux kernels. The virtualization piece is based on PVFS2.8.2.
 
 Changes
 ====================
@@ -118,14 +118,14 @@ Setup
 
 * Start PVFS Proxy:
   1. On the file system client:
-     When running only using the pvfs2-command tools, change the configuration of the PVFS2 client by editing /etc/pvfs2tab(or the tab file you choose for the client/tool to see) and change its port number to the one your proxy is running on.
+     --When running only using the pvfs2-command tools, change the configuration of the PVFS2 client by editing /etc/pvfs2tab(or the tab file you choose for the client/tool to see) and change its port number to the one your proxy is running on.
 
      For example change the following (original default PVFS2 serve port is 3334):
         tcp://pvfss321:3334/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0
 	 to:
         tcp://pvfss321:3335/pvfs2-fs /mnt/pvfs2 pvfs2 defaults,noauto 0 0
 
-     When running using kernel module and mount approach, this step can be skipped, and no more change on the client is necessary.  Just set the mount point to port 3335 and you are all set.
+     --When running using kernel module and mount approach, this step can be skipped, and no more change on the client is necessary.  However, additional steps are needed to 1) set the mount point to port 3335; 2) install kernel module 3) start client daemon process 4) mount the file system on the client
      
      Note: If you plan to profile and evaluate proxy performance compared with native performance, you can mount your PVFS2 file system onto different locations on the client when the PVFS client is using kernel module.  For more details on how to compile and run in kernel module, please refer to http://www.pvfs.org/cvs/pvfs-2-8-branch-docs/doc//pvfs2-quickstart/pvfs2-quickstart.php#SECTION00060000000000000000.
 
@@ -142,7 +142,7 @@ Setup
      Note: All the servers in the server configuration file will be disguised as a different location (change of ports to redirect to the proxy) when the proxy is working and the contact from a client is made through the proxy.  Thus, all the running servers should have a same copy of proxy running with the same parameters (port).  It can happen that some clients will mount their remote servers from the original ports, but that still requires the proxy to exist on every node in case another client needs to contact this server via the proxy on another server.
 
   3. Start the proxy on the file system server by
-     "./proxy2 [--port=port_number] [--buffer=cache_size] [--logging=default|all|none|debug|cache] [--delay=poll_timeout] [--scheduler=SFQD|DSFQ|none] [--config=weights.ini] [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]".
+     "./proxy2 [--port=port_number] [--buffer=cache_size] [--logging=default|all|none|debug|cache] [--delay=poll_timeout] [--scheduler=SFQD|DSFQ|vDSFQ|SFQD_Full|2LSFQD|none] [--config=weights.ini] [--counter=0] [--stat=stat.txt] [--cost_method=0] [--=proxy_config=/etc/pvfs2-fs.conf]".
      The cache_size(in bytes) has a limit – it has to be larger than the size of the configuration file (/etc/pvfs2-fs.conf by default on the server nodes).  50-100KB seems to be a reasonably optimal size according to our program tuning and testing.  The cache sits on each socket bound to a client or the server response (initiated by the client and the server).  Thus, setting an appropriate amount of cache keeps the system healthy.
      The counter flag indicates whether or not to start the periodical counter for every few seconds' statistics.
      The stat flag identifies the name of the log file for final statistic output when it receives SIG_TERM.
@@ -172,11 +172,33 @@ Setup
      
 * Destroy PVFS2 proxy:
   Use "umount" to unmount the PVFS2 partition (if you started it by using kernle module) and then kill the proxy daemons.
+  
+* Using Automatic Test Script
+	* testx.pl is the latest script to execute test cases and exercise a variety of workloads on the native/virtualized PVFS2. The script does a sweep of parameters line by line (i.e. it does not recognize the key-value pair as in .ini files, instead it recognizes which line has what meanings. The key=value pattern of each line is just a way to help remember what each line means. The script will take the B value from A=B line content, and anything after B (e.g. C in the form of A=B=C works as your own additional comment to save extra allowed values for instance). If any equal sign is needed in the value, it should be represented by pipie ('|'), which will be replaced by an equal sign later.
+	
+		The script does the following:
+		** Accept workload parameters, including workload types: IOR, BTIO, metarates, multi-md-test, dummy (sleep), wrf; and durations, client nodes, access pattern, QoS, # processes, etc
+		** Accept environment parameters, inclduing benchmark locations, IO types (MPI-IO or POSIX through VFS), virtualization mode (scheduler), iterations, caching and local file system mount point, etc
+		** Accept PVFS2 parameters, including storage mode, storage location, sync option, local FS initialization (caution), and PVFS configuration file generation, etc
+		** Accept proxy parameters, including scheduler, depth, buffer size, performance recording interval, IP address range for the identification of clients, etc
+		** Automatically time and record logs to your specified experiment folder
+		** Text you when important events occur during the experiments (must have Ruby 1.8 installed)
+		** Accept experiment parameters, such as the interval to spit how long the experiment has been running, the trigger to terminate the whole experiment, how many applications will be launched, etc
+	* Stepwise, the script:
+		a) cleans up any PVFS2 daemons, clients, kernel modules, caches/buffers, MPI rings, PVFS2 mounts, or any remaining statistical recording processes (top, iostat, mpstat, etc).
+		b) sets up MPI ring and each ring's machine file
+		c) sets up PVFS2 server stoage and daemon
+		d) launches virtualization software if needed
+		e) sets up PVFS2 mount point (VFS) or entry point (MPI-IO)
+		f) terminates the experiments based on policy (WAIT, TIMED, or ANY)
+		g) cleans up and does post-processing on the logs from various sources
+		
+		
 
 Logging
 ==========
 
-     For performance issues, currently the logging is by default written to /var/tmp/proxy2.log.
+     For performance and simplicity, currently the log data is by default written to /var/tmp/proxy2.log.
 
 Support
 ==========
