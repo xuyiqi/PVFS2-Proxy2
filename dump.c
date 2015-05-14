@@ -814,7 +814,7 @@ struct meta* dump_meta_header(char* buffer, enum msg_type type, char* source)
 			offset+=length;
 		}*/
 		offset+=length*listattr_handle_num;
-		fprintf(stderr,"listing %i attrs\n", listattr_handle_num);
+		//fprintf(stderr,"listing %i attrs\n", listattr_handle_num);
 
 
 		/*

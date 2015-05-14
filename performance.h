@@ -32,6 +32,7 @@ extern struct timeval last_count_time, first_count_time;
 struct performance_sta
 {
 	float throughput;
+	long iops;
 	int req_go;
 	int req_come;
 	int req_delay;

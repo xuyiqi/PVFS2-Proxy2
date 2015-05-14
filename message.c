@@ -47,12 +47,12 @@ peek_start:
 	ret=recv(read_socket, header, eheader,MSG_PEEK|DEFAULT_MSG_FLAGS|MSG_DONTWAIT);
 	if(ret == 0)
 	{
-		fprintf(stderr,"socket %i closing, ignore next error please\n", read_socket);
+		//fprintf(stderr,"socket %i closing, ignore next error please\n", read_socket);
 		ret=-1;
 	}
 	if (ret < 0)
 	{
-		fprintf(stderr,"socket %i returned negative\n", read_socket);
+		//fprintf(stderr,"socket %i returned negative\n", read_socket);
 	}
 	else if (ret<eheader) //socket returned larger than 0, but less than requested bytes
 	{
@@ -238,7 +238,7 @@ int check_request(int index)
 	long long tag = -1;
 	if (ret!=eheader)
 	{
-		fprintf(stderr,"Error getting bmi header for request. Expected: %i, got:%i\n",eheader, ret);
+		//fprintf(stderr,"Error getting bmi header for request. Expected: %i, got:%i\n",eheader, ret);
 		//s_pool.socket_state_list[index].incomplete_mode = 1;
 	}
 	else
@@ -543,6 +543,7 @@ int check_request(int index)
 					}
 					else if (static_methods[scheduler_index]->sch_self_dispatch==0)
 					{
+                        //fprintf(stderr, "%s item is blocked by aaa\n", log_prefix);
 						new_rs->locked = 1;
 					}
 					free(pi);
@@ -739,17 +740,17 @@ int check_response(int index)//peeking
 				}
 				else
 				{
-					/*switch (operation){
+					switch (operation){
 					case PVFS_SERV_GETATTR:
 					case PVFS_SERV_READDIR:
 					case PVFS_SERV_LISTATTR:
 					case PVFS_SERV_LOOKUP_PATH:
-						//fprintf(stderr, "%s incurring more cost on response %i bytes\n", ops[operation], size);
+						//fprintf(depthtrack, "%s incurring more cost on response %i bytes\n", ops[operation], size);
 						break;
 					default:
-						//fprintf(stderr,"%s has minimum cost on response\n", ops[operation]);
+						//fprintf(depthtrack,"%s has minimum cost on response\n", ops[operation]);
 						break;
-					}*/
+					}
 					response_rs->meta_response = 1;
 				}
 				if (operation==PVFS_SERV_GETCONFIG)
@@ -961,7 +962,7 @@ int check_response(int index)//peeking
                     	    gettimeofday(&tv, 0);
                         	update_release_time(new_item->socket_data->unlock_index, tv);
 							struct request_state *new_dispatched = new_item->socket_data->rs;
-							fprintf(stderr,"dispatching item %li\n", new_item->item_id);
+							//fprintf(stderr,"dispatching item %li\n", new_item->item_id);
 							assert(new_dispatched->locked!=0);
 							new_dispatched->locked = 0;
 							new_dispatched->current_item = new_item;
@@ -1031,9 +1032,17 @@ int check_response(int index)//peeking
                         	update_release_time(new_item->socket_data->unlock_index, tv);
 							struct request_state *new_dispatched = new_item->socket_data->rs;
 							new_dispatched->current_item = new_item;
+                            //fprintf(stderr, "%s item %i is being released\n", log_prefix, new_item->item_id);
 							assert( new_dispatched->locked != 0 );
 							new_dispatched->locked = 0;
 							//s_pool.socket_state_list[new_item->socket_data->unlock_index].locked=0;
+						}
+
+                                                if (first_receive==0)
+                                                {
+                                                        passed_completions++;
+                                                        app_stats[app_index].app_exist=app_stats[app_index].app_exist+1;
+                                                        check_all_app_stat();
 						}
 					}
 					else if (scheduler_on && !is_meta(operation) && !is_IO(operation))

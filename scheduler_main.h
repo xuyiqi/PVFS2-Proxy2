@@ -108,7 +108,7 @@ struct scheduler_method
     int (* sch_is_idle)();
     int (* sch_current_size)(struct request_state *rs, long long actual);
     int (* sch_add_ttl_throughput)(int this_amount, int app_index);
-    int (* sch_calculate_diff)(int app_index);
+    long long (* sch_calculate_diff)(int app_index);
     int sch_self_dispatch;
     int sch_accept_meta;
     //when sockets are disconnected, the unfinished items in the queue should be removed

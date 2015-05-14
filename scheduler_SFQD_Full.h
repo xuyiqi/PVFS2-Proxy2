@@ -34,6 +34,7 @@ extern int sfqdfull_depth;
 extern int sfqdfull_purecost;
 struct sfqdfull_queue_item
 {
+	int depth;
 	int request_socket;
 	int start_tag;
 	int finish_tag;

@@ -563,7 +563,7 @@ int main(int argc, char **argv)
 							{
 								if (check_stat==-1)
 								{
-									fprintf(stderr,"response returning 0, closing?\n");
+									//fprintf(stderr,"response returning 0, closing?\n");
 
 								}
 								else if (check_stat ==-2)
@@ -646,7 +646,7 @@ int main(int argc, char **argv)
 							{
 								if (got_size==0)
 								{
-									fprintf(stderr,"socket closing on %i\n",i);
+									//fprintf(stderr,"socket closing on %i\n",i);
 								}
 								else
 								{
@@ -655,11 +655,11 @@ int main(int argc, char **argv)
 								}
 
 								close(read_socket);
-								fprintf(stderr,"removing %i\n",i);
+								//fprintf(stderr,"removing %i\n",i);
 								remove_socket_by_index(i);
 
 								close(s_pool.socket_state_list[i+1].socket);
-								fprintf(stderr,"removing %i\n",i+1);
+								//fprintf(stderr,"removing %i\n",i+1);
 								remove_socket_by_index(i+1);
 
 								if (s_pool.pool_size>1)//not the last two deleted
@@ -673,7 +673,7 @@ int main(int argc, char **argv)
 								}
 
 								i--;
-								fprintf(stderr,"sockets removed:\n");
+								//fprintf(stderr,"sockets removed:\n");
 								continue;
 
 

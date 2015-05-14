@@ -92,7 +92,7 @@ void remove_socket_by_index(int socket_index)
 
 	int count = 0;
 
-	fprintf(stderr, "list has %i items\n",PINT_llist_count(app_reqs));
+	//fprintf(stderr, "list has %i items\n",PINT_llist_count(app_reqs));
 	while (queue!=NULL)
 	{
 		count++;
@@ -103,8 +103,8 @@ void remove_socket_by_index(int socket_index)
 			exit(-1);
 		}
 		long tag = current_item->current_tag;
-		fprintf(stderr,"removing tag %li op %i (%s) - R/W %i \n",
-				tag, current_item->op, ops[current_item->op], current_item->pvfs_io_type);
+		//fprintf(stderr,"removing tag %li op %i (%s) - R/W %i \n",
+		//		tag, current_item->op, ops[current_item->op], current_item->pvfs_io_type);
 		queue = queue->next;
 		//the removal procedure will change the next pointer, so we keep it for the while loop
 		//just before removing
@@ -131,7 +131,7 @@ void remove_socket_by_index(int socket_index)
 		}
 		free(removed_item);
 	}
-	fprintf(stderr,"%i messages removed on the socket\n", count);
+	//fprintf(stderr,"%i messages removed on the socket\n", count);
 	if (app_reqs!=NULL)
 	{
 		free(app_reqs);
